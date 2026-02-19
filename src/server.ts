@@ -1,4 +1,4 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -10,6 +10,7 @@ import { uploadRouter } from "./routes/upload.js";
 import { agentRouter } from "./routes/agent.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
 const PORT = Number(process.env.PORT) || 3840;
 
 const apiKey = process.env.OPENAI_API_KEY;
@@ -25,7 +26,7 @@ app.use("/api/vault", vaultRouter);
 app.use("/api/upload", uploadRouter);
 app.use("/api/agent", agentRouter);
 
-const publicDir = path.join(__dirname, "..", "public");
+const publicDir = path.resolve(__dirname, "..", "public");
 app.use(express.static(publicDir));
 app.get("*", (_req, res) => {
   res.sendFile(path.join(publicDir, "index.html"));

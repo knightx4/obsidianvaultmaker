@@ -15,6 +15,13 @@ const OFFICE_EXT = [".pdf", ".docx", ".doc", ".pptx", ".ppt"];
 const ALLOWED_EXT = [...TEXT_EXT, ...OFFICE_EXT];
 const UPLOAD_SUBDIR = "uploads";
 
+const ZIP_MAGIC = Buffer.from([0x50, 0x4b]);
+
+function isZip(buffer: Buffer, filename: string): boolean {
+  if (buffer.length >= 2 && buffer[0] === ZIP_MAGIC[0] && buffer[1] === ZIP_MAGIC[1]) return true;
+  return path.extname(filename).toLowerCase() === ".zip";
+}
+
 function sanitizeRelative(rel: string): string {
   const normalized = path.normalize(rel).replace(/^(\.\.(\/|\\|$))+/, "");
   return normalized.split(path.sep).filter(Boolean).join(path.sep);
@@ -33,6 +40,65 @@ async function writeFileAndGetRel(
   return relPath;
 }
 
+async function processZipBuffer(vaultPath: string, buffer: Buffer): Promise<string[]> {
+  const created: string[] = [];
+  const zip = new AdmZip(buffer);
+  const entries = zip.getEntries();
+  for (const e of entries) {
+    if (e.isDirectory) continue;
+    let name = e.entryName.replace(/\\/g, "/");
+    if (name.includes("..")) continue;
+    name = sanitizeRelative(name);
+    if (!name) continue;
+    const ext = path.extname(name).toLowerCase();
+    if (!ALLOWED_EXT.includes(ext)) continue;
+    const data = e.getData();
+    if (isExtractable(ext)) {
+      const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
+      const text = await extractText(buf);
+      const mdName = path.basename(name, ext) + ".md";
+      const rel = path.join(path.dirname(name), mdName);
+      const full = path.join(vaultPath, sanitizeRelative(rel));
+      await mkdir(path.dirname(full), { recursive: true });
+      await writeFile(full, text || "(No text extracted.)", "utf-8");
+      created.push(rel);
+      enqueueFileForProcessing(rel);
+    } else {
+      const full = path.join(vaultPath, name);
+      await mkdir(path.dirname(full), { recursive: true });
+      await writeFile(full, data, "utf-8");
+      created.push(name);
+      enqueueFileForProcessing(name);
+    }
+  }
+  return created;
+}
+
+async function processOneFile(
+  vaultPath: string,
+  f: Express.Multer.File
+): Promise<string[]> {
+  const created: string[] = [];
+  const ext = path.extname(f.originalname).toLowerCase();
+  if (!ALLOWED_EXT.includes(ext)) return created;
+  const baseName = (f.originalname || "unnamed").replace(/[/\\?%*:|"<>]/g, "-");
+  const dir = UPLOAD_SUBDIR;
+  if (isExtractable(ext)) {
+    const text = await extractText(f.buffer);
+    const mdName = path.basename(baseName, ext) + ".md";
+    const rel = path.join(dir, mdName);
+    await writeFileAndGetRel(vaultPath, rel, text || "(No text extracted.)", "utf-8");
+    created.push(rel);
+    enqueueFileForProcessing(rel);
+  } else {
+    const rel = path.join(dir, baseName);
+    await writeFileAndGetRel(vaultPath, rel, f.buffer, "utf-8");
+    created.push(rel);
+    enqueueFileForProcessing(rel);
+  }
+  return created;
+}
+
 uploadRouter.post("/files", upload.array("files", 50), async (req, res) => {
   const state = getAgentState();
   if (!state.vaultPath) {
@@ -46,66 +112,12 @@ uploadRouter.post("/files", upload.array("files", 50), async (req, res) => {
   }
   const created: string[] = [];
   for (const f of files) {
-    const ext = path.extname(f.originalname).toLowerCase();
-    if (!ALLOWED_EXT.includes(ext)) continue;
-    const baseName = (f.originalname || "unnamed").replace(/[/\\?%*:|"<>]/g, "-");
-    const dir = UPLOAD_SUBDIR;
-    if (isExtractable(ext)) {
-      const text = await extractText(f.buffer);
-      const mdName = path.basename(baseName, ext) + ".md";
-      const rel = path.join(dir, mdName);
-      await writeFileAndGetRel(state.vaultPath, rel, text || "(No text extracted.)", "utf-8");
-      created.push(rel);
-      enqueueFileForProcessing(rel);
+    if (isZip(f.buffer, f.originalname || "")) {
+      const fromZip = await processZipBuffer(state.vaultPath, f.buffer);
+      created.push(...fromZip);
     } else {
-      const rel = path.join(dir, baseName);
-      await writeFileAndGetRel(state.vaultPath, rel, f.buffer, "utf-8");
-      created.push(rel);
-      enqueueFileForProcessing(rel);
-    }
-  }
-  res.json({ ok: true, created, count: created.length });
-});
-
-uploadRouter.post("/zip", upload.single("zip"), async (req, res) => {
-  const state = getAgentState();
-  if (!state.vaultPath) {
-    res.status(400).json({ ok: false, error: "Set vault path first" });
-    return;
-  }
-  const file = req.file;
-  if (!file?.buffer) {
-    res.status(400).json({ ok: false, error: "No ZIP file uploaded" });
-    return;
-  }
-  const zip = new AdmZip(file.buffer);
-  const entries = zip.getEntries();
-  const created: string[] = [];
-  for (const e of entries) {
-    if (e.isDirectory) continue;
-    let name = e.entryName.replace(/\\/g, "/");
-    if (name.includes("..")) continue;
-    name = sanitizeRelative(name);
-    if (!name) continue;
-    const ext = path.extname(name).toLowerCase();
-    if (!ALLOWED_EXT.includes(ext)) continue;
-    const data = e.getData();
-    if (isExtractable(ext)) {
-      const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
-      const text = await extractText(buffer);
-      const mdName = path.basename(name, ext) + ".md";
-      const rel = path.join(path.dirname(name), mdName);
-      const full = path.join(state.vaultPath, sanitizeRelative(rel));
-      await mkdir(path.dirname(full), { recursive: true });
-      await writeFile(full, text || "(No text extracted.)", "utf-8");
-      created.push(rel);
-      enqueueFileForProcessing(rel);
-    } else {
-      const full = path.join(state.vaultPath, name);
-      await mkdir(path.dirname(full), { recursive: true });
-      await writeFile(full, data, "utf-8");
-      created.push(name);
-      enqueueFileForProcessing(name);
+      const fromFile = await processOneFile(state.vaultPath, f);
+      created.push(...fromFile);
     }
   }
   res.json({ ok: true, created, count: created.length });

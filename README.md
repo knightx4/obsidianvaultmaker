@@ -4,9 +4,9 @@ Builds an Obsidian vault from uploaded files: breaks content into atomic notes a
 
 ## Run
 
-1. `npm install`
+1. `npm install` (from this folder, or from repo root run `npm run install:app`)
 2. Copy `.env.example` to `.env` and set `OPENAI_API_KEY`
-3. `npm run dev` — server runs at http://localhost:3840
+3. `npm run dev` — server runs at http://localhost:3840 (from this folder or from repo root)
 
 ## Usage
 

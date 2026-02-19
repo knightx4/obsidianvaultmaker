@@ -112,15 +112,10 @@
 
     <div class="card">
       <h2>Upload</h2>
-      <label>Files (.md, .txt, .pdf, .docx, .pptx)</label>
-      <input type="file" id="fileInput" multiple accept=".md,.txt,.pdf,.docx,.doc,.pptx,.ppt" />
+      <label>Files or ZIP (documents, or .zip to keep folder structure)</label>
+      <input type="file" id="fileInput" multiple accept=".md,.txt,.pdf,.docx,.doc,.pptx,.ppt,.zip" />
       <div class="row">
-        <button type="button" id="uploadFiles">Upload files</button>
-      </div>
-      <label style="margin-top: 1rem;">ZIP (keeps folder structure)</label>
-      <input type="file" id="zipInput" accept=".zip" />
-      <div class="row">
-        <button type="button" id="uploadZip">Upload ZIP</button>
+        <button type="button" id="uploadBtn">Upload</button>
       </div>
       <p class="feedback" id="uploadFeedback"></p>
     </div>
@@ -148,9 +143,7 @@
     const saveVault = document.getElementById("saveVault");
     const vaultFeedback = document.getElementById("vaultFeedback");
     const fileInput = document.getElementById("fileInput");
-    const zipInput = document.getElementById("zipInput");
-    const uploadFiles = document.getElementById("uploadFiles");
-    const uploadZip = document.getElementById("uploadZip");
+    const uploadBtn = document.getElementById("uploadBtn");
     const uploadFeedback = document.getElementById("uploadFeedback");
     const startAgent = document.getElementById("startAgent");
     const stopAgent = document.getElementById("stopAgent");
@@ -203,9 +196,9 @@
       }
     });
 
-    uploadFiles.addEventListener("click", async () => {
+    uploadBtn.addEventListener("click", async () => {
       if (!fileInput.files?.length) {
-        showUploadFeedback("Select one or more files.", true);
+        showUploadFeedback("Select one or more files or a ZIP.", true);
         return;
       }
       const form = new FormData();
@@ -216,28 +209,6 @@
         if (data.ok) {
           showUploadFeedback("Added " + data.count + " file(s).");
           fileInput.value = "";
-          pollStatus();
-        } else {
-          showUploadFeedback(data.error || "Upload failed", true);
-        }
-      } catch (e) {
-        showUploadFeedback("Request failed: " + e.message, true);
-      }
-    });
-
-    uploadZip.addEventListener("click", async () => {
-      if (!zipInput.files?.length) {
-        showUploadFeedback("Select a ZIP file.", true);
-        return;
-      }
-      const form = new FormData();
-      form.append("zip", zipInput.files[0]);
-      try {
-        const res = await fetch(API + "/upload/zip", { method: "POST", body: form });
-        const data = await res.json();
-        if (data.ok) {
-          showUploadFeedback("Added " + data.count + " file(s) from ZIP.");
-          zipInput.value = "";
           pollStatus();
         } else {
           showUploadFeedback(data.error || "Upload failed", true);
