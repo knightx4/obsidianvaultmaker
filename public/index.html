@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vault Builder Agent</title>
+  <style>
+    :root {
+      --bg: #1a1b23;
+      --surface: #24252e;
+      --text: #e6e7ef;
+      --muted: #8b8d9a;
+      --accent: #7c9cf9;
+      --accent-hover: #9bb3ff;
+      --danger: #e57373;
+      --success: #81c784;
+      --radius: 8px;
+      --font: "DM Sans", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 15px;
+      line-height: 1.5;
+    }
+    .container { max-width: 640px; margin: 0 auto; padding: 2rem; }
+    h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem; }
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .card h2 { font-size: 0.9rem; font-weight: 600; margin: 0 0 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    label { display: block; margin-bottom: 0.35rem; color: var(--muted); font-size: 0.85rem; }
+    input[type="text"] {
+      width: 100%;
+      padding: 0.6rem 0.75rem;
+      background: var(--bg);
+      border: 1px solid #333;
+      border-radius: var(--radius);
+      color: var(--text);
+      font: inherit;
+      margin-bottom: 0.75rem;
+    }
+    input:focus { outline: none; border-color: var(--accent); }
+    .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-top: 0.75rem; }
+    button {
+      padding: 0.55rem 1rem;
+      border-radius: var(--radius);
+      border: none;
+      font: inherit;
+      font-weight: 500;
+      cursor: pointer;
+      background: var(--accent);
+      color: #111;
+    }
+    button:hover { background: var(--accent-hover); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.danger { background: var(--danger); color: #fff; }
+    button.danger:hover { filter: brightness(1.1); }
+    .status-bar {
+      display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;
+      font-size: 0.9rem; color: var(--muted);
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted);
+    }
+    .status-dot.idle { background: var(--muted); }
+    .status-dot.processing { background: var(--accent); animation: pulse 1s ease infinite; }
+    .status-dot.stopping { background: var(--danger); }
+    @keyframes pulse { 50% { opacity: 0.6; } }
+    .log {
+      background: var(--bg);
+      border-radius: var(--radius);
+      padding: 0.75rem;
+      font-family: ui-monospace, monospace;
+      font-size: 0.8rem;
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--muted);
+    }
+    .log:empty::before { content: "No activity yet."; }
+    .feedback { margin-top: 0.5rem; font-size: 0.85rem; color: var(--muted); }
+    .feedback.error { color: var(--danger); }
+    .feedback.success { color: var(--success); }
+    input[type="file"] { margin-bottom: 0.5rem; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Vault Builder Agent</h1>
+
+    <div class="card">
+      <h2>Vault</h2>
+      <label for="vaultName">Vault name</label>
+      <input type="text" id="vaultName" placeholder="My Vault" />
+      <label for="vaultPath">Vault path (full path on your computer)</label>
+      <input type="text" id="vaultPath" placeholder="/Users/you/Documents/MyVault" />
+      <div class="row">
+        <button type="button" id="saveVault">Save vault config</button>
+      </div>
+      <p class="feedback" id="vaultFeedback"></p>
+    </div>
+
+    <div class="card">
+      <h2>Upload</h2>
+      <label>Files (.md, .txt, .pdf, .docx, .pptx)</label>
+      <input type="file" id="fileInput" multiple accept=".md,.txt,.pdf,.docx,.doc,.pptx,.ppt" />
+      <div class="row">
+        <button type="button" id="uploadFiles">Upload files</button>
+      </div>
+      <label style="margin-top: 1rem;">ZIP (keeps folder structure)</label>
+      <input type="file" id="zipInput" accept=".zip" />
+      <div class="row">
+        <button type="button" id="uploadZip">Upload ZIP</button>
+      </div>
+      <p class="feedback" id="uploadFeedback"></p>
+    </div>
+
+    <div class="card">
+      <h2>Agent</h2>
+      <div class="status-bar">
+        <span class="status-dot idle" id="statusDot"></span>
+        <span id="statusText">Idle</span>
+        <span id="queueCount"></span>
+      </div>
+      <div class="row">
+        <button type="button" id="startAgent">Start agent</button>
+        <button type="button" id="stopAgent" class="danger">Stop agent</button>
+      </div>
+      <label style="margin-top: 0.75rem;">Activity</label>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+
+  <script>
+    const API = "/api";
+    const vaultName = document.getElementById("vaultName");
+    const vaultPath = document.getElementById("vaultPath");
+    const saveVault = document.getElementById("saveVault");
+    const vaultFeedback = document.getElementById("vaultFeedback");
+    const fileInput = document.getElementById("fileInput");
+    const zipInput = document.getElementById("zipInput");
+    const uploadFiles = document.getElementById("uploadFiles");
+    const uploadZip = document.getElementById("uploadZip");
+    const uploadFeedback = document.getElementById("uploadFeedback");
+    const startAgent = document.getElementById("startAgent");
+    const stopAgent = document.getElementById("stopAgent");
+    const statusDot = document.getElementById("statusDot");
+    const statusText = document.getElementById("statusText");
+    const queueCount = document.getElementById("queueCount");
+    const logEl = document.getElementById("log");
+
+    function showVaultFeedback(msg, isError) {
+      vaultFeedback.textContent = msg;
+      vaultFeedback.className = "feedback " + (isError ? "error" : "success");
+    }
+    function showUploadFeedback(msg, isError) {
+      uploadFeedback.textContent = msg;
+      uploadFeedback.className = "feedback " + (isError ? "error" : "success");
+    }
+
+    // Load saved vault config
+    try {
+      const saved = localStorage.getItem("vaultConfig");
+      if (saved) {
+        const { name, path: p } = JSON.parse(saved);
+        if (name) vaultName.value = name;
+        if (p) vaultPath.value = p;
+      }
+    } catch (_) {}
+
+    saveVault.addEventListener("click", async () => {
+      const name = vaultName.value.trim();
+      const path = vaultPath.value.trim();
+      if (!path) {
+        showVaultFeedback("Enter a vault path.", true);
+        return;
+      }
+      try {
+        const res = await fetch(API + "/vault/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vaultPath: path, vaultName: name || null }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showVaultFeedback("Vault config saved.");
+          localStorage.setItem("vaultConfig", JSON.stringify({ name: name || null, path }));
+        } else {
+          showVaultFeedback(data.error || "Failed", true);
+        }
+      } catch (e) {
+        showVaultFeedback("Request failed: " + e.message, true);
+      }
+    });
+
+    uploadFiles.addEventListener("click", async () => {
+      if (!fileInput.files?.length) {
+        showUploadFeedback("Select one or more files.", true);
+        return;
+      }
+      const form = new FormData();
+      for (const f of fileInput.files) form.append("files", f);
+      try {
+        const res = await fetch(API + "/upload/files", { method: "POST", body: form });
+        const data = await res.json();
+        if (data.ok) {
+          showUploadFeedback("Added " + data.count + " file(s).");
+          fileInput.value = "";
+          pollStatus();
+        } else {
+          showUploadFeedback(data.error || "Upload failed", true);
+        }
+      } catch (e) {
+        showUploadFeedback("Request failed: " + e.message, true);
+      }
+    });
+
+    uploadZip.addEventListener("click", async () => {
+      if (!zipInput.files?.length) {
+        showUploadFeedback("Select a ZIP file.", true);
+        return;
+      }
+      const form = new FormData();
+      form.append("zip", zipInput.files[0]);
+      try {
+        const res = await fetch(API + "/upload/zip", { method: "POST", body: form });
+        const data = await res.json();
+        if (data.ok) {
+          showUploadFeedback("Added " + data.count + " file(s) from ZIP.");
+          zipInput.value = "";
+          pollStatus();
+        } else {
+          showUploadFeedback(data.error || "Upload failed", true);
+        }
+      } catch (e) {
+        showUploadFeedback("Request failed: " + e.message, true);
+      }
+    });
+
+    startAgent.addEventListener("click", async () => {
+      try {
+        await fetch(API + "/agent/start", { method: "POST" });
+        pollStatus();
+      } catch (e) {
+        statusText.textContent = "Error: " + e.message;
+      }
+    });
+
+    stopAgent.addEventListener("click", async () => {
+      try {
+        await fetch(API + "/agent/stop", { method: "POST" });
+      } catch (_) {}
+    });
+
+    function updateUI(data) {
+      statusDot.className = "status-dot " + (data.status || "idle");
+      statusText.textContent = data.currentTask || (data.status === "processing" ? "Processing…" : "Idle");
+      if (data.queueLength != null) {
+        queueCount.textContent = data.queueLength > 0 ? "Queue: " + data.queueLength : "";
+      }
+      if (Array.isArray(data.log)) {
+        logEl.textContent = data.log.slice(-30).join("\n");
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+    }
+
+    async function pollStatus() {
+      try {
+        const res = await fetch(API + "/agent/status");
+        const data = await res.json();
+        updateUI(data);
+      } catch (_) {}
+    }
+
+    setInterval(pollStatus, 2000);
+    pollStatus();
+  </script>
+</body>
+</html>
