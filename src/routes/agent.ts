@@ -23,13 +23,14 @@ export interface SourceTreeNode {
 export const agentRouter = Router();
 
 /** Human-readable label for a queued task for UI display. Resolves sourceId to source path/name when possible. */
-async function taskLabel(t: QueuedTask): Promise<string> {
+async function taskLabel(vaultPath: string | null, t: QueuedTask): Promise<string> {
   if (t.path) return t.path;
-  if (t.payload?.sourceId) {
-    const source = await loadSource(t.payload.sourceId);
+  if (t.payload?.sourceId && vaultPath) {
+    const source = await loadSource(vaultPath, t.payload.sourceId);
     if (source) return source.path || source.name || t.payload.sourceId;
     return t.payload.sourceId;
   }
+  if (t.payload?.sourceId) return t.payload.sourceId;
   if (t.payload?.mocTitle) return t.payload.mocTitle;
   return t.kind;
 }
@@ -65,12 +66,12 @@ async function buildStatusPayload(): Promise<{
     progress = await loadProgress(state.vaultPath);
   }
   const queue = await Promise.all(
-    ordered.map(async (t) => ({ kind: t.kind, stage: t.stage, label: await taskLabel(t) }))
+    ordered.map(async (t) => ({ kind: t.kind, stage: t.stage, label: await taskLabel(state.vaultPath, t) }))
   );
   const processedIds = progress?.processedSourceIds ?? [];
   const processedLabels = await Promise.all(
     processedIds.map(async (id) => {
-      const source = await loadSource(id);
+      const source = state.vaultPath ? await loadSource(state.vaultPath, id) : null;
       return source ? source.path || source.name : id;
     })
   );
@@ -166,8 +167,14 @@ agentRouter.get("/source-tree", async (req, res) => {
     let entries: { name: string; isDirectory: () => boolean }[];
     try {
       entries = await readdir(fullDir, { withFileTypes: true });
-    } catch {
-      res.json({ ok: true, sourceDir: srcDir, path: dirRel, children: [] });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.json({
+        ok: false,
+        error: "Could not read folder: " + message,
+        path: dirRel,
+        children: null,
+      });
       return;
     }
     const nodes: SourceTreeNode[] = [];

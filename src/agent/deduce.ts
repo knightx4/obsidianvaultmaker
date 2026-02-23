@@ -8,7 +8,10 @@ import {
   readNote,
   extractNoteTitlesFromVault,
 } from "./link.js";
-import { parseRelationshipLinksFromContent } from "./prompts.js";
+import { parseRelationshipLinksFromContent, stripMarkdownFences } from "./prompts.js";
+import { loadAgentConfig } from "../storage/agentConfig.js";
+import { indexNote } from "../retrieval/embeddingIndex.js";
+import { getEmbeddingClient } from "../retrieval/retrieve.js";
 
 const INSIGHTS_DIR = "Insights";
 const MOC_DIR = "MOCs";
@@ -121,7 +124,7 @@ Given these linked premises, what is the unspoken conclusion? If the conclusion 
   const newTitle = conclusion.title.replace(/[/\\?%*:|"<>]/g, "-").trim() || "Untitled";
   if (allInsightTitles.has(newTitle)) return null;
 
-  const content = conclusion.content.trim();
+  const content = stripMarkdownFences(conclusion.content.trim());
   const frontmatter: Record<string, unknown> = {
     type: "Conclusion",
     source: "deduce",
@@ -134,5 +137,19 @@ Given these linked premises, what is the unspoken conclusion? If the conclusion 
   await mkdir(path.dirname(fullPath), { recursive: true });
   await writeFile(fullPath, output, "utf-8");
   appendLog(`Deduce: ${newRel}`);
+  const snippet = content.slice(0, 300);
+  let emb: number[] | undefined;
+  const config = await loadAgentConfig(vaultPath);
+  if (config.useEmbeddings !== false) {
+    const ec = getEmbeddingClient();
+    if (ec) {
+      try {
+        emb = await ec.embed(`${newTitle} ${snippet}`.slice(0, 8000));
+      } catch {
+        // index without embedding
+      }
+    }
+  }
+  await indexNote(vaultPath, newTitle, newRel, snippet, emb);
   return newRel;
 }

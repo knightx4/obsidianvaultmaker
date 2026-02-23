@@ -4,7 +4,8 @@ import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 import { existsSync, accessSync } from "fs";
-import { createOpenAIClient } from "./llm/openai.js";
+import { createOpenAIClient, createOpenAIEmbeddingClient } from "./llm/openai.js";
+import { setEmbeddingClient } from "./retrieval/retrieve.js";
 import { setLLM, setAgentVault, setSourceDir } from "./agent/loop.js";
 import { loadVaultConfig } from "./storage/vaultConfig.js";
 import { startSourceWatcher } from "./watcher/sourceWatcher.js";
@@ -43,8 +44,10 @@ const PORT = Number(process.env.PORT) || 3840;
 const apiKey = process.env.OPENAI_API_KEY;
 if (apiKey) {
   setLLM(createOpenAIClient(apiKey));
+  setEmbeddingClient(createOpenAIEmbeddingClient(apiKey));
 } else {
   console.warn("OPENAI_API_KEY is not set. Add it to the .env file in the app folder to use the agent.");
+  setEmbeddingClient(null);
 }
 
 const app = express();

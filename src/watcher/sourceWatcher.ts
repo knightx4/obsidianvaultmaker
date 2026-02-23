@@ -56,7 +56,7 @@ async function processFile(
 
   const id = generateSourceId();
   const name = path.basename(rel, ext) || rel;
-  await saveSource(id, { path: rel, name, text });
+  await saveSource(vaultPath, id, { path: rel, name, text });
   enqueueSourceForProcessing(id);
 
   index.entries[rel] = { sourceId: id, contentHash };

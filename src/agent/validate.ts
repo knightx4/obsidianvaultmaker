@@ -4,7 +4,10 @@ import matter from "gray-matter";
 import type { LLMClient } from "../llm/client.js";
 import { appendLog } from "./queue.js";
 import { listMarkdownFiles, readNote } from "./link.js";
-import { parseRelationshipLinksFromContent } from "./prompts.js";
+import { parseRelationshipLinksFromContent, stripMarkdownFences } from "./prompts.js";
+import { loadAgentConfig } from "../storage/agentConfig.js";
+import { indexNote } from "../retrieval/embeddingIndex.js";
+import { getEmbeddingClient } from "../retrieval/retrieve.js";
 
 const MOC_DIR = "MOCs";
 const MOC_PREFIX = MOC_DIR + "/";
@@ -112,7 +115,7 @@ async function createSynthesisNote(
     { maxTokens: 512 }
   );
 
-  const content = raw.trim();
+  const content = stripMarkdownFences(raw.trim());
   if (!content) return null;
 
   const frontmatter: Record<string, unknown> = {
@@ -128,6 +131,20 @@ async function createSynthesisNote(
   const full = path.join(vaultPath, rel);
   await writeFile(full, output, "utf-8");
   appendLog(`Validation: synthesis note ${rel}`);
+  const snippet = content.slice(0, 300);
+  let emb: number[] | undefined;
+  const config = await loadAgentConfig(vaultPath);
+  if (config.useEmbeddings !== false) {
+    const ec = getEmbeddingClient();
+    if (ec) {
+      try {
+        emb = await ec.embed(`${safeName} ${snippet}`.slice(0, 8000));
+      } catch {
+        // index without embedding
+      }
+    }
+  }
+  await indexNote(vaultPath, safeName, rel, snippet, emb);
   return rel;
 }
 

@@ -7,7 +7,11 @@ import { listMarkdownFiles, extractNoteTitlesFromVault } from "./link.js";
 import {
   SCIENTIFIC_REASONING_PRINCIPLES,
   RELATIONSHIP_TAXONOMY,
+  stripMarkdownFences,
 } from "./prompts.js";
+import { loadAgentConfig } from "../storage/agentConfig.js";
+import { loadIndex, indexNote } from "../retrieval/embeddingIndex.js";
+import { getRelevantTitles, getEmbeddingClient, similarity } from "../retrieval/retrieve.js";
 
 const INSIGHTS_DIR = "Insights";
 
@@ -40,20 +44,36 @@ const MAX_CHUNK = 12000;
 
 /**
  * Extract insight notes from a source text. Writes only insight .md files to the vault (under Insights/).
- * Returns relative paths of created notes.
+ * Uses bounded relevant titles per chunk and pre-write dedup (exact + optional similarity). Returns relative paths of created notes.
  */
 export async function extractInsightsFromSource(
   llm: LLMClient,
   vaultPath: string,
   sourceText: string,
-  sourceName: string,
-  existingTitles: string[]
+  sourceName: string
 ): Promise<string[]> {
   await mkdir(vaultPath, { recursive: true });
+  const config = await loadAgentConfig(vaultPath);
+  const maxTitlesExtract = config.maxTitlesExtract ?? 80;
+  const dedupThreshold = config.dedupSimilarityThreshold ?? 0.92;
+  const useEmbeddings = config.useEmbeddings ?? true;
+
+  const allMd = await listMarkdownFiles(vaultPath);
+  const existingTitlesSet = new Set(extractNoteTitlesFromVault(allMd));
+  let index = await loadIndex(vaultPath);
+  const embeddingClient = getEmbeddingClient();
+
   const created: string[] = [];
   const chunks = chunkText(sourceText, MAX_CHUNK);
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
+    const chunkPreview = chunk.slice(0, 500);
+    const relevantTitles = await getRelevantTitles(vaultPath, chunkPreview, {
+      limit: maxTitlesExtract,
+      useEmbeddings,
+    });
+    const existingList = relevantTitles.length ? relevantTitles.map((t) => `- ${t}`).join("\n") : "(none yet)";
+
     const userPrompt = `Source: ${sourceName}${chunks.length > 1 ? ` (part ${i + 1}/${chunks.length})` : ""}
 
 \`\`\`
@@ -61,7 +81,7 @@ ${chunk}
 \`\`\`
 
 Existing insight notes in the vault (use these exact titles in [[links]] when an insight relates):
-${existingTitles.length ? existingTitles.map((t) => `- ${t}`).join("\n") : "(none yet)"}
+${existingList}
 
 Extract the key insights from this text. For each insight, provide:
 - \`title\`: short, clear claim
@@ -98,16 +118,48 @@ Output only a JSON object, no other text:
     for (const note of insights) {
       if (!note.title || !note.content?.trim()) continue;
       const safeTitle = note.title.replace(/[/\\?%*:|"<>]/g, "-").trim() || "Untitled";
+
+      if (existingTitlesSet.has(safeTitle)) continue;
+
+      if (useEmbeddings && embeddingClient && index.entries.some((e) => e.embedding && e.embedding.length > 0)) {
+        try {
+          const toEmbed = `${note.title} ${note.content.trim().slice(0, 200)}`;
+          const newEmbedding = await embeddingClient.embed(toEmbed.slice(0, 8000));
+          let maxSim = 0;
+          for (const e of index.entries) {
+            if (e.embedding && e.embedding.length > 0) {
+              const s = similarity(newEmbedding, e.embedding);
+              if (s > maxSim) maxSim = s;
+            }
+          }
+          if (maxSim >= dedupThreshold) continue;
+        } catch {
+          // proceed to write on embed failure
+        }
+      }
+
       const frontmatter = buildObsidianProperties(note, sourceName);
-      const body = note.content.trim();
+      const body = stripMarkdownFences(note.content.trim());
       const output = matter.stringify(body, frontmatter, { delimiters: ["---", "---"] });
       const rel = path.join(INSIGHTS_DIR, `${safeTitle}.md`);
       const full = path.join(vaultPath, rel);
       await mkdir(path.dirname(full), { recursive: true });
       await writeFile(full, output, "utf-8");
       created.push(rel);
-      existingTitles.push(safeTitle);
+      existingTitlesSet.add(safeTitle);
       appendLog(`Insight: ${rel}`);
+
+      const bodySnippet = body.slice(0, 300);
+      let emb: number[] | undefined;
+      if (useEmbeddings && embeddingClient) {
+        try {
+          emb = await embeddingClient.embed(`${safeTitle} ${bodySnippet}`.slice(0, 8000));
+        } catch {
+          // index without embedding
+        }
+      }
+      await indexNote(vaultPath, safeTitle, rel, bodySnippet, emb);
+      index = await loadIndex(vaultPath);
     }
   }
   return created;

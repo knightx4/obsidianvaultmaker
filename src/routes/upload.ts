@@ -27,8 +27,9 @@ export async function importFolderInBackground(sourceDir: string): Promise<void>
   const state = getAgentState();
   const vaultPath = state.vaultPath;
   if (!vaultPath) return;
+  const vPath: string = vaultPath;
 
-  let index = await loadSourceIndex(vaultPath);
+  let index = await loadSourceIndex(vPath);
   if (!index || index.sourceDir !== sourceDir) {
     index = { sourceDir, entries: {}, lastUpdated: new Date().toISOString() };
   }
@@ -60,7 +61,7 @@ export async function importFolderInBackground(sourceDir: string): Promise<void>
 
           const id = generateSourceId();
           const name = path.basename(rel, ext) || rel;
-          await saveSource(id, { path: rel, name, text });
+          await saveSource(vPath, id, { path: rel, name, text });
           enqueueSourceForProcessing(id);
           index!.entries[rel] = { sourceId: id, contentHash };
           enqueuedCount++;
@@ -73,10 +74,10 @@ export async function importFolderInBackground(sourceDir: string): Promise<void>
 
   await walkAndProcess("");
   index!.lastUpdated = new Date().toISOString();
-  await saveSourceIndex(vaultPath, index!);
+  await saveSourceIndex(vPath, index!);
   setSourceDir(sourceDir);
-  await saveVaultConfig({ vaultPath, sourceDir });
-  startSourceWatcher(sourceDir, vaultPath);
+  await saveVaultConfig({ vaultPath: vPath, sourceDir });
+  startSourceWatcher(sourceDir, vPath);
 }
 
 uploadRouter.post("/import-folder", async (req, res) => {

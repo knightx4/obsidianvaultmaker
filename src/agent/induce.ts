@@ -4,7 +4,10 @@ import matter from "gray-matter";
 import type { LLMClient } from "../llm/client.js";
 import { appendLog } from "./queue.js";
 import { readNote, findPathByTitle } from "./link.js";
-import { RELATIONSHIP_TAXONOMY } from "./prompts.js";
+import { RELATIONSHIP_TAXONOMY, stripMarkdownFences } from "./prompts.js";
+import { loadAgentConfig } from "../storage/agentConfig.js";
+import { indexNote } from "../retrieval/embeddingIndex.js";
+import { getEmbeddingClient } from "../retrieval/retrieve.js";
 
 const INSIGHTS_DIR = "Insights";
 
@@ -88,7 +91,7 @@ Identify recurring patterns or hypotheses. For each, provide title, content (wit
       type: "Theme",
       source: "induce",
     };
-    const output = matter.stringify(theme.content.trim(), frontmatter, {
+    const output = matter.stringify(stripMarkdownFences(theme.content.trim()), frontmatter, {
       delimiters: ["---", "---"],
     });
     const newRel = path.join(INSIGHTS_DIR, `${safeTitle}.md`);
@@ -98,6 +101,21 @@ Identify recurring patterns or hypotheses. For each, provide title, content (wit
     created.push(newRel);
     existingTitles.add(safeTitle);
     appendLog(`Induce: ${newRel}`);
+    const body = stripMarkdownFences(theme.content.trim());
+    const snippet = body.slice(0, 300);
+    let emb: number[] | undefined;
+    const config = await loadAgentConfig(vaultPath);
+    if (config.useEmbeddings !== false) {
+      const ec = getEmbeddingClient();
+      if (ec) {
+        try {
+          emb = await ec.embed(`${safeTitle} ${snippet}`.slice(0, 8000));
+        } catch {
+          // index without embedding
+        }
+      }
+    }
+    await indexNote(vaultPath, safeTitle, newRel, snippet, emb);
   }
   return created;
 }

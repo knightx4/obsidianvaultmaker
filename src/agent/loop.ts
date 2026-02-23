@@ -10,9 +10,11 @@ import {
   getLog,
   enqueue,
   enqueueMany,
+  clearQueue,
 } from "./queue.js";
 import { notifyAgentUpdate } from "./events.js";
 import { loadProgress, saveProgress, restoreFromProgress } from "../storage/progress.js";
+import { clearSourceIndex } from "../storage/sourceIndex.js";
 import {
   readNote,
   addLinksToNote,
@@ -20,6 +22,10 @@ import {
   extractNoteTitlesFromVault,
 } from "./link.js";
 import { extractInsightsFromSource, getExistingInsightTitles } from "./insights.js";
+import { loadAgentConfig } from "../storage/agentConfig.js";
+import { getRelevantTitles } from "../retrieval/retrieve.js";
+import { getEmbeddingClient } from "../retrieval/retrieve.js";
+import { indexNote } from "../retrieval/embeddingIndex.js";
 import { runOrganizeVault, getMocList } from "./organize.js";
 import { runDeduceForNote } from "./deduce.js";
 import { runInduceForMoc } from "./induce.js";
@@ -51,9 +57,14 @@ export async function setAgentVault(vaultPath: string | null, vaultName: string 
   state.vaultName = vaultName;
   if (vaultPath) {
     const result = await restoreFromProgress(vaultPath, getQueueLength());
+    const progress = await loadProgress(vaultPath);
     if (result.restored && result.queueLength > 0) {
       state.currentStage = result.currentStage ?? STAGES[0];
       appendLog(`Progress restored: ${result.queueLength} task(s) in queue, ${result.processedCount} source(s) already analyzed.`);
+    } else if (progress) {
+      state.currentStage = progress.currentStage ?? STAGES[0];
+    } else {
+      state.currentStage = STAGES[0];
     }
   } else {
     state.currentStage = null;
@@ -67,6 +78,33 @@ export function setSourceDir(sourceDir: string | null): void {
 
 export function getSourceDir(): string | null {
   return state.sourceDir;
+}
+
+/** Clear the task queue and set stage to extract. Call when vault or source folder changes so the next import populates the queue fresh. */
+export function resetQueueForNewSource(): void {
+  clearQueue();
+  state.currentStage = "extract";
+  notifyAgentUpdate();
+}
+
+/**
+ * Reset the current vault to a fresh state: clear queue, clear progress and source index on disk, clear current vault from state.
+ * Use when the user wants to "start a new vault" (re-run from scratch). UI will show "Create vault to start agent" until they create a vault again.
+ */
+export async function resetVaultToNew(vaultPath: string): Promise<void> {
+  clearQueue();
+  await saveProgress(vaultPath, {
+    processedSourceIds: [],
+    queue: [],
+    currentStage: null,
+  });
+  await clearSourceIndex(vaultPath);
+  state.vaultPath = null;
+  state.vaultName = null;
+  state.sourceDir = null;
+  state.currentStage = null;
+  appendLog("Vault reset. Create vault to start agent.");
+  notifyAgentUpdate();
 }
 
 export function setLLM(client: LLMClient): void {
@@ -172,16 +210,6 @@ export async function runLoop(): Promise<void> {
 
       if (!task) {
         if (getQueueLength() === 0) {
-          // In extract stage, source folder may still be scanning; wait and recheck before advancing
-          if (currentStage === "extract") {
-            const maxWaits = 36;
-            for (let w = 0; w < maxWaits && !stopRequested; w++) {
-              appendLog("Queue empty (extract). Waiting for more sources…");
-              await new Promise((r) => setTimeout(r, 5000));
-              if (getQueueLength() > 0) break;
-            }
-            if (getQueueLength() > 0) continue;
-          }
           const idx = STAGES.indexOf(currentStage);
           if (idx >= 0 && idx < STAGES.length - 1) {
             state.currentStage = STAGES[idx + 1];
@@ -218,20 +246,13 @@ export async function runLoop(): Promise<void> {
           continue;
         }
         try {
-          const source = await loadSource(sourceId);
+          const source = await loadSource(vaultPath, sourceId);
           if (!source) {
             appendLog(`Source not found: ${sourceId}`);
             continue;
           }
           setStatus("processing", `Extract: ${source.name}`);
-          const existingTitles = await getExistingInsightTitles(vaultPath);
-          await extractInsightsFromSource(
-            llm,
-            vaultPath,
-            source.text,
-            source.name,
-            [...existingTitles]
-          );
+          await extractInsightsFromSource(llm, vaultPath, source.text, source.name);
           await persistProgress(vaultPath, sourceId);
           const remaining = getQueueLength();
           if (remaining > 0) appendLog(`${remaining} tasks left in queue.`);
@@ -259,12 +280,32 @@ export async function runLoop(): Promise<void> {
         setStatus("processing", `Link: ${notePath}`);
         try {
           const content = await readNote(vaultPath, notePath);
-          const allMd = await listMarkdownFiles(vaultPath);
-          const norm = (p: string) => p.split(path.sep).join("/");
-          const others = extractNoteTitlesFromVault(
-            allMd.filter((p) => norm(p) !== norm(notePath))
-          );
-          await addLinksToNote(llm, vaultPath, notePath, content, others);
+          const config = await loadAgentConfig(vaultPath);
+          const maxTitlesLink = config.maxTitlesLink ?? 50;
+          const useEmbeddings = config.useEmbeddings ?? true;
+          const relevantTitles = await getRelevantTitles(vaultPath, content, {
+            limit: maxTitlesLink,
+            useEmbeddings,
+          });
+          const currentTitle = path.basename(notePath, ".md");
+          const others = relevantTitles.filter((t) => t !== currentTitle);
+          if (others.length > 0) {
+            await addLinksToNote(llm, vaultPath, notePath, content, others);
+            const updatedContent = await readNote(vaultPath, notePath);
+            const snippet = updatedContent.slice(0, 300);
+            let emb: number[] | undefined;
+            if (useEmbeddings) {
+              const ec = getEmbeddingClient();
+              if (ec) {
+                try {
+                  emb = await ec.embed(`${currentTitle} ${snippet}`.slice(0, 8000));
+                } catch {
+                  // index without embedding
+                }
+              }
+            }
+            await indexNote(vaultPath, currentTitle, notePath, snippet, emb);
+          }
           await persistProgress(vaultPath);
         } catch (err) {
           appendLog(`Error linking ${notePath}: ${(err as Error).message}`);

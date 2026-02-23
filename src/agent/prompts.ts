@@ -42,3 +42,16 @@ export function parseRelationshipLinksFromContent(
   }
   return out;
 }
+
+/**
+ * Strip leading/trailing markdown code fences (e.g. ```markdown ... ```) from LLM output
+ * so written files start with frontmatter --- or body content, not a code block.
+ */
+export function stripMarkdownFences(text: string): string {
+  let s = text.trim();
+  const open = /^\s*```(?:markdown|md)?\s*\n?/i;
+  const close = /\n?\s*```\s*$/;
+  if (open.test(s)) s = s.replace(open, "");
+  if (close.test(s)) s = s.replace(close, "");
+  return s.trim();
+}

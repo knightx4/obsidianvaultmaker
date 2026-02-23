@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir } from "fs/promises";
 import path from "path";
 import type { LLMClient } from "../llm/client.js";
 import { appendLog } from "./queue.js";
-import { SCIENTIFIC_REASONING_PRINCIPLES } from "./prompts.js";
+import { SCIENTIFIC_REASONING_PRINCIPLES, stripMarkdownFences } from "./prompts.js";
 
 const SYSTEM_PROMPT = `${SCIENTIFIC_REASONING_PRINCIPLES}
 
@@ -78,20 +78,20 @@ Respond in this exact JSON format only, no other text:
   const updatedSource = typeof parsed.updatedSource === "string" ? parsed.updatedSource : null;
 
   if (updatedSource != null) {
-    await writeFile(fullPath, updatedSource, "utf-8");
+    await writeFile(fullPath, stripMarkdownFences(updatedSource), "utf-8");
     appendLog(`Updated: ${relativePath}`);
   }
 
   const MIN_NOTE_LENGTH = 80;
   const createdPaths: string[] = [];
   for (const note of newNotes) {
-    const text = (note.content || "").trim();
+    const text = stripMarkdownFences((note.content || "").trim());
     if (!note.title || !text || text.length < MIN_NOTE_LENGTH) continue;
     const safeTitle = note.title.replace(/[/\\?%*:|"<>]/g, "-").trim() || "Untitled";
     const dir = path.dirname(fullPath);
     await mkdir(dir, { recursive: true });
     const newPath = path.join(dir, `${safeTitle}.md`);
-    await writeFile(newPath, note.content, "utf-8");
+    await writeFile(newPath, text, "utf-8");
     const rel = path.relative(vaultPath, newPath);
     createdPaths.push(rel);
     appendLog(`Created: ${rel}`);

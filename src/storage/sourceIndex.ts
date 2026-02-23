@@ -59,6 +59,17 @@ export async function saveSourceIndex(vaultPath: string, data: SourceIndexData):
 }
 
 /**
+ * Clear the source index for a vault so the next import will treat all files as needing processing.
+ */
+export async function clearSourceIndex(vaultPath: string): Promise<void> {
+  await saveSourceIndex(vaultPath, {
+    sourceDir: "",
+    entries: {},
+    lastUpdated: new Date().toISOString(),
+  });
+}
+
+/**
  * Check if a file needs processing: not in index or hash changed.
  */
 export function needsProcessing(

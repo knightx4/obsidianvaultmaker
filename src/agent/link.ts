@@ -5,6 +5,7 @@ import { appendLog } from "./queue.js";
 import {
   SCIENTIFIC_REASONING_PRINCIPLES,
   RELATIONSHIP_TAXONOMY,
+  stripMarkdownFences,
 } from "./prompts.js";
 
 const SYSTEM_PROMPT = `${SCIENTIFIC_REASONING_PRINCIPLES}
@@ -46,7 +47,7 @@ If any of these notes genuinely relate to this note's ideas, add links using the
     { maxTokens: 4096 }
   );
 
-  const trimmed = updated.trim();
+  const trimmed = stripMarkdownFences(updated.trim());
   if (!trimmed || trimmed === content) return null;
 
   const fullPath = path.join(vaultPath, relativePath);

@@ -3,6 +3,7 @@ import { access } from "fs/promises";
 import path from "path";
 import os from "os";
 import { setAgentVault, getAgentState, setSourceDir } from "../agent/loop.js";
+import { resetQueueForNewSource, resetVaultToNew } from "../agent/loop.js";
 import { pickFolder } from "../lib/folderPicker.js";
 import { saveVaultConfig } from "../storage/vaultConfig.js";
 import { startSourceWatcher, stopSourceWatcher } from "../watcher/sourceWatcher.js";
@@ -47,10 +48,11 @@ vaultRouter.post("/config", async (req, res) => {
   if (sourceDir) {
     try {
       await access(sourceDir);
+      resetQueueForNewSource();
       startSourceWatcher(sourceDir, vaultPath);
       void importFolderInBackground(sourceDir);
     } catch {
-      // source folder not accessible, skip watcher
+      // source folder not accessible, skip watcher and import
     }
   }
 
@@ -64,4 +66,20 @@ vaultRouter.get("/config", (_req, res) => {
     vaultName: state.vaultName,
     sourceDir: state.sourceDir,
   });
+});
+
+/** Reset current vault to fresh state (clear progress, queue, source index, and clear current vault from state). Requires vault to be set. */
+vaultRouter.post("/start-new", async (req, res) => {
+  const state = getAgentState();
+  if (!state.vaultPath) {
+    res.status(400).json({ ok: false, error: "Set vault path first (Create vault)." });
+    return;
+  }
+  try {
+    await resetVaultToNew(state.vaultPath);
+    stopSourceWatcher();
+    res.json({ ok: true, message: "Vault reset. Create vault to start agent." });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: (err as Error).message });
+  }
 });
