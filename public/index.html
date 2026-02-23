@@ -374,6 +374,23 @@
 
   <script>
     const API = "/api";
+
+    /** Parse JSON from fetch response; if server returned HTML (e.g. 404 page), throw a clear error. */
+    async function parseJsonResponse(res) {
+      const text = await res.text();
+      const trimmed = text.trim();
+      if (trimmed.charAt(0) !== "{" && trimmed.charAt(0) !== "[") {
+        var hint = "Open the app from your server (e.g. http://localhost:3840), not as a file.";
+        if (window.location.protocol === "file:") hint = "Open the app from http://localhost:3840 in your browser, not by opening the HTML file directly.";
+        throw new Error("Server returned a page instead of data. " + hint);
+      }
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        throw new Error("Invalid response: " + e.message);
+      }
+    }
+
     const vaultName = document.getElementById("vaultName");
     const vaultPath = document.getElementById("vaultPath");
     const sourcePath = document.getElementById("sourcePath");
@@ -496,7 +513,7 @@
       childrenWrap.appendChild(loader);
       try {
         var res = await fetch(API + "/agent/source-tree?path=" + encodeURIComponent(relPath));
-        var data = await res.json();
+        var data = await parseJsonResponse(res);
         childrenWrap.innerHTML = "";
         if (data.ok && Array.isArray(data.children)) {
           loadedPaths[relPath] = true;
@@ -540,7 +557,7 @@
       try {
         var res = await fetch(API + "/agent/source-tree", { signal: controller.signal });
         clearTimeout(timeoutId);
-        var data = await res.json();
+        var data = await parseJsonResponse(res);
         if (data.ok && Array.isArray(data.children)) {
           loadedPaths = { "": true };
           renderTree(data.children);
@@ -577,7 +594,7 @@
     async function loadVaultConfig() {
       try {
         const res = await fetch(API + "/vault/config");
-        const data = await res.json();
+        const data = await parseJsonResponse(res);
         if (data.vaultPath) vaultPath.value = data.vaultPath;
         if (data.vaultName != null) vaultName.value = data.vaultName || "";
         if (data.sourceDir != null) sourcePath.value = data.sourceDir || "";
@@ -601,7 +618,7 @@
       vaultFeedback.className = "feedback";
       try {
         const res = await fetch(API + "/vault/pick-folder");
-        const data = await res.json();
+        const data = await parseJsonResponse(res);
         if (data.ok && data.path) {
           vaultPath.value = data.path;
           vaultFeedback.textContent = "";
@@ -624,7 +641,7 @@
       vaultFeedback.className = "feedback";
       try {
         const res = await fetch(API + "/vault/pick-folder");
-        const data = await res.json();
+        const data = await parseJsonResponse(res);
         if (data.ok && data.path) {
           sourcePath.value = data.path;
           vaultFeedback.textContent = "";
@@ -655,7 +672,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ vaultPath: pathVal, vaultName: name || null, sourceDir }),
         });
-        const data = await res.json();
+        const data = await parseJsonResponse(res);
         if (data.ok) {
           showVaultFeedback(sourceDir ? "Config saved. Source folder is being scanned in the background and will be watched for changes." : "Vault config saved.");
           localStorage.setItem("vaultConfig", JSON.stringify({ name: name || null, path: pathVal, sourceDir }));
