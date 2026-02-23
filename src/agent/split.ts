@@ -2,11 +2,15 @@ import { readFile, writeFile, mkdir } from "fs/promises";
 import path from "path";
 import type { LLMClient } from "../llm/client.js";
 import { appendLog } from "./queue.js";
+import { SCIENTIFIC_REASONING_PRINCIPLES } from "./prompts.js";
 
-const SYSTEM_PROMPT = `You are building an Obsidian vault. Your job is to make notes atomic: one main concept per note.
+const SYSTEM_PROMPT = `${SCIENTIFIC_REASONING_PRINCIPLES}
+
+You are building an Obsidian vault. Your job is to make notes atomic: one main concept per note.
 
 Rules:
 - Output only valid markdown. Use Obsidian wiki links: [[Note Title]] for links to other notes.
+- **Never split a Chain of Thought.** If a premise leads directly to a conclusion in the source text, they must stay in the same atomic note to preserve context. Do not split in the middle of a single argument (premise → conclusion). Split only when there are distinct, self-contained concepts.
 - Only split when the note clearly contains multiple distinct, substantial concepts that each deserve their own note.
 - Never create empty, trivial, or filler notes. Each new note must have real substantive content (multiple sentences or a full idea), not a single phrase or heading.
 - When in doubt, do not split. Prefer leaving the note as-is. It is better to have one good note than several pointless ones.

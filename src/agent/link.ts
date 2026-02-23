@@ -1,15 +1,22 @@
-import { readFile, writeFile } from "fs/promises";
+import { readFile, writeFile, readdir } from "fs/promises";
 import path from "path";
 import type { LLMClient } from "../llm/client.js";
 import { appendLog } from "./queue.js";
+import {
+  SCIENTIFIC_REASONING_PRINCIPLES,
+  RELATIONSHIP_TAXONOMY,
+} from "./prompts.js";
 
-const SYSTEM_PROMPT = `You are building an Obsidian vault. Your job is to add connections between notes using wiki links only when they are meaningful.
+const SYSTEM_PROMPT = `${SCIENTIFIC_REASONING_PRINCIPLES}
+
+You are building an Obsidian vault. Your job is to add connections between notes using wiki links only when they are meaningful and the relationship is nameable.
 
 Rules:
 - Use only Obsidian wiki links: [[Note Title]] (exact note title as it appears in the list). Do not invent titles.
-- Only add a link when there is a real conceptual connection (same topic, cause-effect, part-whole, reference). Do not link for the sake of linking.
-- If there are no meaningful connections to other notes in the list, output the exact same markdown unchanged. It is fine to add zero links when nothing fits.
-- When you have connected everything that truly relates, stop. Output only the complete markdown (either with new [[links]] or unchanged).`;
+- Only add a link when you can state the logical relationship in one short phrase. Use the machine-readable format: "Relationship:: <type> [[Note Title]]" (e.g. "Relationship:: Supports [[X]]", "Relationship:: Evidence for [[Y]]"). Allowed types: ${RELATIONSHIP_TAXONOMY.join(", ")}.
+- Place each link in a sentence that conveys the relationship, or on its own line as "Relationship:: Type [[Title]]".
+- If there are no meaningful, nameable connections to other notes in the list, output the exact same markdown unchanged. It is fine to add zero links when nothing fits.
+- Output only the complete markdown (either with new Relationship:: Type [[links]] or unchanged).`;
 
 export async function addLinksToNote(
   llm: LLMClient,
@@ -29,7 +36,7 @@ ${content}
 Other notes in the vault (use these exact titles in [[links]] only when there is a real conceptual connection):
 ${otherNoteTitles.map((t) => `- ${t}`).join("\n")}
 
-If any of these notes genuinely relate to this note's ideas, add [[Note Title]] links where they fit. If none do, return the exact same markdown unchanged. Output only the markdown, no explanation.`;
+If any of these notes genuinely relate to this note's ideas, add links using the format "Relationship:: <type> [[Note Title]]" (e.g. "Relationship:: Evidence for [[X]]" or "Relationship:: Contradicts [[Y]]"). Allowed relationship types: ${RELATIONSHIP_TAXONOMY.join(", ")}. Only add a link when you can name the relationship. If none do, return the exact same markdown unchanged. Output only the markdown, no explanation.`;
 
   const updated = await llm.complete(
     [
@@ -60,9 +67,13 @@ function normalizeRel(p: string): string {
 }
 
 export async function listMarkdownFiles(vaultPath: string, dir: string = ""): Promise<string[]> {
-  const { readdir } = await import("fs/promises");
   const fullDir = path.join(vaultPath, dir);
-  const entries = await readdir(fullDir, { withFileTypes: true });
+  let entries;
+  try {
+    entries = await readdir(fullDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
   const out: string[] = [];
 
   for (const e of entries) {
@@ -75,4 +86,20 @@ export async function listMarkdownFiles(vaultPath: string, dir: string = ""): Pr
     }
   }
   return out;
+}
+
+export async function readNote(vaultPath: string, relativePath: string): Promise<string> {
+  const full = path.join(vaultPath, relativePath);
+  return readFile(full, "utf-8");
+}
+
+/** Find the first .md file in the vault whose basename (without .md) equals the given title. */
+export async function findPathByTitle(
+  vaultPath: string,
+  title: string
+): Promise<string | null> {
+  const files = await listMarkdownFiles(vaultPath);
+  const normalized = title.trim();
+  const found = files.find((f) => path.basename(f, ".md") === normalized);
+  return found ?? null;
 }

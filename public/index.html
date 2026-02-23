@@ -4,18 +4,28 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Vault Builder Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg: #1a1b23;
-      --surface: #24252e;
-      --text: #e6e7ef;
-      --muted: #8b8d9a;
-      --accent: #7c9cf9;
-      --accent-hover: #9bb3ff;
-      --danger: #e57373;
-      --success: #81c784;
-      --radius: 8px;
-      --font: "DM Sans", system-ui, sans-serif;
+      --bg: #191a1f;
+      --bg-elevated: #1e1f24;
+      --surface: #232428;
+      --border: #2d2e33;
+      --border-subtle: #27282c;
+      --text: #dcddde;
+      --text-dim: #989aa0;
+      --muted: #6b6d75;
+      --accent: #7c6fef;
+      --accent-hover: #8f82f5;
+      --accent-muted: rgba(124, 111, 239, 0.15);
+      --danger: #cf6e6e;
+      --danger-hover: #e07878;
+      --success: #7cb87c;
+      --radius: 6px;
+      --radius-sm: 4px;
+      --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
     * { box-sizing: border-box; }
     body {
@@ -24,157 +34,618 @@
       background: var(--bg);
       color: var(--text);
       font-family: var(--font);
-      font-size: 15px;
+      font-size: 14px;
       line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
     }
-    .container { max-width: 640px; margin: 0 auto; padding: 2rem; }
-    h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem; }
+    .container {
+      max-width: 560px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem;
+    }
+    .header {
+      margin-bottom: 2rem;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .header h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 0;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+    .header p {
+      margin: 0.35rem 0 0;
+      font-size: 0.8125rem;
+      color: var(--text-dim);
+    }
     .card {
       background: var(--surface);
+      border: 1px solid var(--border-subtle);
       border-radius: var(--radius);
-      padding: 1.25rem;
-      margin-bottom: 1rem;
+      padding: 1.25rem 1.35rem;
+      margin-bottom: 0.75rem;
+      border-left: 3px solid transparent;
     }
-    .card h2 { font-size: 0.9rem; font-weight: 600; margin: 0 0 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-    label { display: block; margin-bottom: 0.35rem; color: var(--muted); font-size: 0.85rem; }
+    .card.vault { border-left-color: var(--accent); }
+    .card.upload { border-left-color: var(--success); }
+    .card.agent { border-left-color: var(--muted); }
+    .card.agent.processing { border-left-color: var(--accent); }
+    .card h2 {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      margin: 0 0 1rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    label {
+      display: block;
+      margin-bottom: 0.35rem;
+      color: var(--text-dim);
+      font-size: 0.8125rem;
+    }
     input[type="text"] {
       width: 100%;
-      padding: 0.6rem 0.75rem;
-      background: var(--bg);
-      border: 1px solid #333;
-      border-radius: var(--radius);
+      padding: 0.5rem 0.65rem;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
       color: var(--text);
       font: inherit;
-      margin-bottom: 0.75rem;
+      font-size: 0.875rem;
+      margin-bottom: 0.85rem;
+      transition: border-color 0.15s ease;
     }
-    input:focus { outline: none; border-color: var(--accent); }
-    .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-top: 0.75rem; }
+    input[type="text"]::placeholder { color: var(--muted); }
+    input[type="text"]:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 0.5rem;
+    }
     button {
-      padding: 0.55rem 1rem;
-      border-radius: var(--radius);
+      padding: 0.45rem 0.9rem;
+      border-radius: var(--radius-sm);
       border: none;
       font: inherit;
+      font-size: 0.8125rem;
       font-weight: 500;
       cursor: pointer;
       background: var(--accent);
-      color: #111;
+      color: #fff;
+      transition: background 0.15s ease;
     }
     button:hover { background: var(--accent-hover); }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
-    button.danger { background: var(--danger); color: #fff; }
-    button.danger:hover { filter: brightness(1.1); }
+    button.danger {
+      background: var(--danger);
+      color: #fff;
+    }
+    button.danger:hover { background: var(--danger-hover); }
     .status-bar {
-      display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;
-      font-size: 0.9rem; color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+      font-size: 0.8125rem;
+      color: var(--text-dim);
     }
     .status-dot {
-      width: 8px; height: 8px; border-radius: 50%;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
       background: var(--muted);
+      flex-shrink: 0;
     }
     .status-dot.idle { background: var(--muted); }
-    .status-dot.processing { background: var(--accent); animation: pulse 1s ease infinite; }
+    .status-dot.processing {
+      background: var(--accent);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
     .status-dot.stopping { background: var(--danger); }
-    @keyframes pulse { 50% { opacity: 0.6; } }
+    .stage-label {
+      color: var(--text-dim);
+      font-size: 0.8125rem;
+      margin-left: 0.35rem;
+    }
+    .progress-summary {
+      margin: 0.4rem 0 0;
+      font-size: 0.8125rem;
+      color: var(--text-dim);
+    }
+    .stage-progress {
+      margin-top: 0.5rem;
+      font-size: 0.8125rem;
+      color: var(--text-dim);
+    }
+    .stage-progress-bar {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      margin-top: 0.35rem;
+      overflow: hidden;
+    }
+    .stage-progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+      transition: width 0.15s ease;
+    }
+    .sources-section {
+      margin-top: 1rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 420px) {
+      .sources-section { grid-template-columns: 1fr; }
+    }
+    .sources-list {
+      background: var(--bg);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 0.5rem 0.65rem;
+      max-height: 140px;
+      overflow-y: auto;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+    .sources-list h4 {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin: 0 0 0.4rem;
+    }
+    .sources-list ul {
+      margin: 0;
+      padding-left: 1.1rem;
+      line-height: 1.5;
+    }
+    .sources-list li {
+      word-break: break-all;
+    }
+    .sources-list .empty {
+      color: var(--muted);
+      font-style: italic;
+      padding-left: 0;
+      list-style: none;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
     .log {
       background: var(--bg);
-      border-radius: var(--radius);
-      padding: 0.75rem;
-      font-family: ui-monospace, monospace;
-      font-size: 0.8rem;
-      max-height: 200px;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 0.65rem 0.75rem;
+      font-family: "SF Mono", "Fira Code", ui-monospace, monospace;
+      font-size: 0.75rem;
+      line-height: 1.45;
+      max-height: 180px;
       overflow-y: auto;
       white-space: pre-wrap;
       word-break: break-word;
+      color: var(--text-dim);
+    }
+    .log:empty::before {
+      content: "No activity yet.";
       color: var(--muted);
     }
-    .log:empty::before { content: "No activity yet."; }
-    .feedback { margin-top: 0.5rem; font-size: 0.85rem; color: var(--muted); }
+    .feedback {
+      margin-top: 0.5rem;
+      font-size: 0.8125rem;
+      color: var(--text-dim);
+    }
     .feedback.error { color: var(--danger); }
     .feedback.success { color: var(--success); }
-    input[type="file"] { margin-bottom: 0.5rem; font-size: 0.9rem; }
+    input[type="file"] {
+      margin-bottom: 0.5rem;
+      font-size: 0.8125rem;
+      color: var(--text-dim);
+    }
+    input[type="file"]::file-selector-button {
+      padding: 0.35rem 0.6rem;
+      margin-right: 0.5rem;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font: inherit;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    input[type="file"]::file-selector-button:hover {
+      background: var(--surface);
+      border-color: var(--accent);
+    }
+    .card.tree { border-left-color: var(--accent-muted); }
+    .source-tree-wrap {
+      background: var(--bg);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 0.5rem 0.65rem;
+      max-height: 320px;
+      overflow: auto;
+      font-size: 0.8125rem;
+    }
+    .source-tree-wrap .tree-placeholder { color: var(--muted); font-style: italic; }
+    .tree-node { display: flex; align-items: center; gap: 0.35rem; padding: 0.2rem 0; min-height: 1.6em; }
+    .tree-node .tree-toggle {
+      width: 1rem; flex-shrink: 0; cursor: pointer; color: var(--text-dim); user-select: none;
+    }
+    .tree-node .tree-toggle.empty { cursor: default; visibility: hidden; }
+    .tree-node .tree-icon { flex-shrink: 0; color: var(--muted); }
+    .tree-node .tree-name { flex: 1; min-width: 0; word-break: break-all; color: var(--text); }
+    .tree-node .tree-meta { flex-shrink: 0; font-size: 0.75rem; color: var(--text-dim); }
+    .tree-node .tree-status {
+      flex-shrink: 0; font-size: 0.6875rem; font-weight: 600; text-transform: uppercase;
+      padding: 0.15rem 0.4rem; border-radius: 3px; letter-spacing: 0.04em;
+    }
+    .tree-status.analyzed { background: rgba(124, 184, 124, 0.2); color: var(--success); }
+    .tree-status.queued { background: rgba(124, 111, 239, 0.2); color: var(--accent); }
+    .tree-status.unsupported { background: rgba(107, 109, 117, 0.25); color: var(--muted); }
+    .tree-status.pending { background: rgba(255, 200, 100, 0.15); color: #c9a227; }
+    .tree-children { margin-left: 1rem; border-left: 1px solid var(--border-subtle); padding-left: 0.5rem; }
+    .tree-children.collapsed { display: none; }
+    .tree-row { display: flex; align-items: center; gap: 0.35rem; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Vault Builder Agent</h1>
+    <header class="header">
+      <h1>Vault Builder Agent</h1>
+      <p>Configure your vault, upload files, and run the agent to build your Obsidian vault.</p>
+    </header>
 
-    <div class="card">
+    <section class="card vault">
       <h2>Vault</h2>
       <label for="vaultName">Vault name</label>
       <input type="text" id="vaultName" placeholder="My Vault" />
-      <label for="vaultPath">Vault path (full path on your computer)</label>
-      <input type="text" id="vaultPath" placeholder="/Users/you/Documents/MyVault" />
+      <label for="vaultPath">Vault path</label>
+      <div class="row" style="margin-bottom: 0.85rem; gap: 0.5rem;">
+        <input type="text" id="vaultPath" placeholder="/Users/you/Documents/MyVault" style=" flex: 1; margin-bottom: 0;" />
+        <button type="button" id="browseVault" style=" white-space: nowrap;">Browse…</button>
+      </div>
+      <label for="sourcePath">Source folder</label>
+      <p class="feedback" style="margin-bottom: 0.35rem; color: var(--text-dim); font-size: 0.8125rem;">Optional. Set a folder to scan for documents and watch for new or changed files. Save config to scan and start watching.</p>
+      <div class="row" style="margin-bottom: 0.85rem; gap: 0.5rem;">
+        <input type="text" id="sourcePath" placeholder="/path/to/docs" style=" flex: 1; margin-bottom: 0;" />
+        <button type="button" id="browseSource" style=" white-space: nowrap;">Browse…</button>
+      </div>
       <div class="row">
-        <button type="button" id="saveVault">Save vault config</button>
+        <button type="button" id="saveVault">Save config</button>
       </div>
       <p class="feedback" id="vaultFeedback"></p>
-    </div>
+    </section>
 
-    <div class="card">
-      <h2>Upload</h2>
-      <label>Files or ZIP (documents, or .zip to keep folder structure)</label>
-      <input type="file" id="fileInput" multiple accept=".md,.txt,.pdf,.docx,.doc,.pptx,.ppt,.zip" />
-      <div class="row">
-        <button type="button" id="uploadBtn">Upload</button>
-      </div>
-      <p class="feedback" id="uploadFeedback"></p>
-    </div>
-
-    <div class="card">
+    <section class="card agent" id="agentCard">
       <h2>Agent</h2>
+      <p class="feedback" id="agentSetupHint" style="margin-bottom: 0.5rem; display: none;"></p>
       <div class="status-bar">
         <span class="status-dot idle" id="statusDot"></span>
         <span id="statusText">Idle</span>
+        <span id="stageLabel" class="stage-label"></span>
         <span id="queueCount"></span>
+      </div>
+      <p id="progressSummary" class="progress-summary"></p>
+      <div id="stageProgressBlock" class="stage-progress" style="display: none;">
+        <span id="stageProgressText"></span>
+        <div class="stage-progress-bar"><div id="stageProgressFill" class="stage-progress-fill" style="width: 0%;"></div></div>
       </div>
       <div class="row">
         <button type="button" id="startAgent">Start agent</button>
         <button type="button" id="stopAgent" class="danger">Stop agent</button>
       </div>
-      <label style="margin-top: 0.75rem;">Activity</label>
+      <div id="sourcesSection" class="sources-section" style="display: none;">
+        <div class="sources-list">
+          <h4>Queued</h4>
+          <ul id="queuedList"></ul>
+        </div>
+        <div class="sources-list">
+          <h4>Processed</h4>
+          <ul id="processedList"></ul>
+        </div>
+      </div>
+      <label style="margin-top: 0.75rem; display: block;">Activity</label>
       <div class="log" id="log"></div>
-    </div>
+    </section>
+
+    <section class="card tree" id="folderHierarchyCard" style="display: none;">
+      <h2>Folder hierarchy</h2>
+      <p class="feedback" style="margin-bottom: 0.5rem; color: var(--text-dim); font-size: 0.8125rem;">Browse your source folder. See which files are analyzed, queued, unsupported, or pending, and when they were last changed.</p>
+      <div class="row" style="margin-bottom: 0.5rem;">
+        <button type="button" id="refreshTree">Refresh</button>
+      </div>
+      <div class="source-tree-wrap" id="sourceTreeWrap">
+        <span class="tree-placeholder">Loading…</span>
+      </div>
+    </section>
   </div>
 
   <script>
     const API = "/api";
     const vaultName = document.getElementById("vaultName");
     const vaultPath = document.getElementById("vaultPath");
+    const sourcePath = document.getElementById("sourcePath");
     const saveVault = document.getElementById("saveVault");
+    const browseVault = document.getElementById("browseVault");
+    const browseSource = document.getElementById("browseSource");
     const vaultFeedback = document.getElementById("vaultFeedback");
-    const fileInput = document.getElementById("fileInput");
-    const uploadBtn = document.getElementById("uploadBtn");
-    const uploadFeedback = document.getElementById("uploadFeedback");
     const startAgent = document.getElementById("startAgent");
     const stopAgent = document.getElementById("stopAgent");
     const statusDot = document.getElementById("statusDot");
     const statusText = document.getElementById("statusText");
+    const stageLabel = document.getElementById("stageLabel");
     const queueCount = document.getElementById("queueCount");
+    const progressSummary = document.getElementById("progressSummary");
+    const stageProgressBlock = document.getElementById("stageProgressBlock");
+    const stageProgressText = document.getElementById("stageProgressText");
+    const stageProgressFill = document.getElementById("stageProgressFill");
+    const sourcesSection = document.getElementById("sourcesSection");
+    const queuedList = document.getElementById("queuedList");
+    const processedList = document.getElementById("processedList");
     const logEl = document.getElementById("log");
+    const agentSetupHint = document.getElementById("agentSetupHint");
+    const folderHierarchyCard = document.getElementById("folderHierarchyCard");
+    const sourceTreeWrap = document.getElementById("sourceTreeWrap");
+    const refreshTreeBtn = document.getElementById("refreshTree");
+
+    let treeRefreshTimeout = null;
+    function scheduleTreeRefresh() {
+      if (treeRefreshTimeout) clearTimeout(treeRefreshTimeout);
+      treeRefreshTimeout = setTimeout(fetchSourceTree, 2000);
+    }
+
+    function formatMtime(iso) {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return "";
+      const now = new Date();
+      const sameDay = d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      if (sameDay) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      return d.toLocaleDateString();
+    }
+
+    var loadedPaths = {}; // relPath -> true (already fetched and rendered)
+
+    function renderTreeNode(node, depth, parentChildrenWrap) {
+      const isDir = node.type === "dir";
+      const div = document.createElement("div");
+      div.className = "tree-node";
+      div.style.paddingLeft = (depth * 0.5) + "rem";
+      const toggle = document.createElement("span");
+      toggle.className = "tree-toggle" + (isDir ? "" : " empty");
+      toggle.textContent = isDir ? "\u25B6" : "";
+      toggle.dataset.collapsed = "true";
+      const icon = document.createElement("span");
+      icon.className = "tree-icon";
+      icon.textContent = isDir ? "\uD83D\uDCC2" : "\uD83D\uDCC4";
+      const name = document.createElement("span");
+      name.className = "tree-name";
+      name.textContent = node.name;
+      div.appendChild(toggle);
+      div.appendChild(icon);
+      div.appendChild(name);
+      if (node.status) {
+        const badge = document.createElement("span");
+        badge.className = "tree-status " + node.status;
+        badge.textContent = node.status;
+        div.appendChild(badge);
+      }
+      if (node.mtime) {
+        const meta = document.createElement("span");
+        meta.className = "tree-meta";
+        meta.textContent = formatMtime(node.mtime);
+        div.appendChild(meta);
+      }
+      const row = document.createElement("div");
+      row.className = "tree-row";
+      row.appendChild(div);
+      const wrap = document.createElement("div");
+      wrap.className = "tree-node-wrap";
+      wrap.appendChild(row);
+      if (isDir) {
+        const childrenWrap = document.createElement("div");
+        childrenWrap.className = "tree-children collapsed";
+        wrap.appendChild(childrenWrap);
+        toggle.addEventListener("click", function () {
+          const collapsed = toggle.dataset.collapsed === "true";
+          if (collapsed && !loadedPaths[node.relPath]) {
+            loadFolderChildren(node.relPath, childrenWrap, depth + 1);
+          }
+          toggle.dataset.collapsed = !collapsed;
+          toggle.textContent = collapsed ? "\u25BC" : "\u25B6";
+          childrenWrap.classList.toggle("collapsed", !collapsed);
+        });
+      }
+      if (parentChildrenWrap) parentChildrenWrap.appendChild(wrap);
+      return wrap;
+    }
+
+    function renderChildrenList(children, container, depth) {
+      container.innerHTML = "";
+      if (!children || children.length === 0) {
+        var empty = document.createElement("div");
+        empty.className = "tree-placeholder";
+        empty.style.paddingLeft = (depth * 0.5 + 0.5) + "rem";
+        empty.textContent = "Empty folder";
+        container.appendChild(empty);
+        return;
+      }
+      children.forEach(function (node) {
+        renderTreeNode(node, depth, container);
+      });
+    }
+
+    async function loadFolderChildren(relPath, childrenWrap, depth) {
+      if (loadedPaths[relPath]) return;
+      var loader = document.createElement("div");
+      loader.className = "tree-placeholder";
+      loader.style.paddingLeft = (depth * 0.5 + 0.5) + "rem";
+      loader.textContent = "Loading…";
+      childrenWrap.appendChild(loader);
+      try {
+        var res = await fetch(API + "/agent/source-tree?path=" + encodeURIComponent(relPath));
+        var data = await res.json();
+        childrenWrap.innerHTML = "";
+        if (data.ok && Array.isArray(data.children)) {
+          loadedPaths[relPath] = true;
+          renderChildrenList(data.children, childrenWrap, depth);
+        } else {
+          var err = document.createElement("div");
+          err.className = "tree-placeholder";
+          err.style.paddingLeft = (depth * 0.5 + 0.5) + "rem";
+          err.textContent = "Could not load folder.";
+          childrenWrap.appendChild(err);
+        }
+      } catch (e) {
+        childrenWrap.innerHTML = "";
+        var err = document.createElement("div");
+        err.className = "tree-placeholder";
+        err.style.paddingLeft = (depth * 0.5 + 0.5) + "rem";
+        err.textContent = "Error: " + e.message;
+        childrenWrap.appendChild(err);
+      }
+    }
+
+    function renderTree(children) {
+      sourceTreeWrap.innerHTML = "";
+      if (!children || children.length === 0) {
+        sourceTreeWrap.innerHTML = "<span class=\"tree-placeholder\">Folder is empty.</span>";
+        return;
+      }
+      var fragment = document.createDocumentFragment();
+      children.forEach(function (node) {
+        renderTreeNode(node, 0, fragment);
+      });
+      sourceTreeWrap.appendChild(fragment);
+    }
+
+    async function fetchSourceTree() {
+      if (!folderHierarchyCard.style.display || folderHierarchyCard.style.display === "none") return;
+      loadedPaths = {};
+      sourceTreeWrap.innerHTML = "<span class=\"tree-placeholder\">Loading…</span>";
+      var controller = new AbortController();
+      var timeoutId = setTimeout(function () { controller.abort(); }, 12000);
+      try {
+        var res = await fetch(API + "/agent/source-tree", { signal: controller.signal });
+        clearTimeout(timeoutId);
+        var data = await res.json();
+        if (data.ok && Array.isArray(data.children)) {
+          loadedPaths = { "": true };
+          renderTree(data.children);
+        } else {
+          sourceTreeWrap.innerHTML = "<span class=\"tree-placeholder\">" + (data.error || "Could not load tree.") + "</span>";
+        }
+      } catch (e) {
+        clearTimeout(timeoutId);
+        var msg = e.name === "AbortError" ? "Request timed out. Try Refresh." : e.message;
+        sourceTreeWrap.innerHTML = "<span class=\"tree-placeholder\">Error: " + msg + "</span>";
+      }
+    }
+
+    refreshTreeBtn.addEventListener("click", function () {
+      fetchSourceTree();
+    });
+
+    function formatLastSaved(iso) {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return "";
+      const sec = Math.round((Date.now() - d.getTime()) / 1000);
+      if (sec < 60) return "Saved just now";
+      if (sec < 3600) return "Saved " + Math.floor(sec / 60) + " min ago";
+      if (sec < 86400) return "Saved " + Math.floor(sec / 3600) + " hr ago";
+      return "Saved " + d.toLocaleDateString();
+    }
 
     function showVaultFeedback(msg, isError) {
       vaultFeedback.textContent = msg;
       vaultFeedback.className = "feedback " + (isError ? "error" : "success");
     }
-    function showUploadFeedback(msg, isError) {
-      uploadFeedback.textContent = msg;
-      uploadFeedback.className = "feedback " + (isError ? "error" : "success");
+    // Load vault config from server (and localStorage as fallback)
+    async function loadVaultConfig() {
+      try {
+        const res = await fetch(API + "/vault/config");
+        const data = await res.json();
+        if (data.vaultPath) vaultPath.value = data.vaultPath;
+        if (data.vaultName != null) vaultName.value = data.vaultName || "";
+        if (data.sourceDir != null) sourcePath.value = data.sourceDir || "";
+        return;
+      } catch (_) {}
+      try {
+        const saved = localStorage.getItem("vaultConfig");
+        if (saved) {
+          const { name, path: p, sourceDir: sd } = JSON.parse(saved);
+          if (name) vaultName.value = name;
+          if (p) vaultPath.value = p;
+          if (sd) sourcePath.value = sd;
+        }
+      } catch (_) {}
     }
+    loadVaultConfig();
 
-    // Load saved vault config
-    try {
-      const saved = localStorage.getItem("vaultConfig");
-      if (saved) {
-        const { name, path: p } = JSON.parse(saved);
-        if (name) vaultName.value = name;
-        if (p) vaultPath.value = p;
+    browseVault.addEventListener("click", async () => {
+      browseVault.disabled = true;
+      vaultFeedback.textContent = "Opening folder picker…";
+      vaultFeedback.className = "feedback";
+      try {
+        const res = await fetch(API + "/vault/pick-folder");
+        const data = await res.json();
+        if (data.ok && data.path) {
+          vaultPath.value = data.path;
+          vaultFeedback.textContent = "";
+        } else if (data.cancelled) {
+          vaultFeedback.textContent = "";
+        } else {
+          vaultFeedback.textContent = data.error || "Could not open folder picker.";
+          vaultFeedback.className = "feedback error";
+        }
+      } catch (e) {
+        vaultFeedback.textContent = "Request failed: " + e.message;
+        vaultFeedback.className = "feedback error";
       }
-    } catch (_) {}
+      browseVault.disabled = false;
+    });
+
+    browseSource.addEventListener("click", async () => {
+      browseSource.disabled = true;
+      vaultFeedback.textContent = "Opening folder picker…";
+      vaultFeedback.className = "feedback";
+      try {
+        const res = await fetch(API + "/vault/pick-folder");
+        const data = await res.json();
+        if (data.ok && data.path) {
+          sourcePath.value = data.path;
+          vaultFeedback.textContent = "";
+        } else if (data.cancelled) {
+          vaultFeedback.textContent = "";
+        } else {
+          vaultFeedback.textContent = data.error || "Could not open folder picker.";
+          vaultFeedback.className = "feedback error";
+        }
+      } catch (e) {
+        vaultFeedback.textContent = "Request failed: " + e.message;
+        vaultFeedback.className = "feedback error";
+      }
+      browseSource.disabled = false;
+    });
 
     saveVault.addEventListener("click", async () => {
       const name = vaultName.value.trim();
-      const path = vaultPath.value.trim();
-      if (!path) {
+      const pathVal = vaultPath.value.trim();
+      const sourceDir = sourcePath.value.trim() || null;
+      if (!pathVal) {
         showVaultFeedback("Enter a vault path.", true);
         return;
       }
@@ -182,12 +653,12 @@
         const res = await fetch(API + "/vault/config", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ vaultPath: path, vaultName: name || null }),
+          body: JSON.stringify({ vaultPath: pathVal, vaultName: name || null, sourceDir }),
         });
         const data = await res.json();
         if (data.ok) {
-          showVaultFeedback("Vault config saved.");
-          localStorage.setItem("vaultConfig", JSON.stringify({ name: name || null, path }));
+          showVaultFeedback(sourceDir ? "Config saved. Source folder is being scanned in the background and will be watched for changes." : "Vault config saved.");
+          localStorage.setItem("vaultConfig", JSON.stringify({ name: name || null, path: pathVal, sourceDir }));
         } else {
           showVaultFeedback(data.error || "Failed", true);
         }
@@ -196,32 +667,9 @@
       }
     });
 
-    uploadBtn.addEventListener("click", async () => {
-      if (!fileInput.files?.length) {
-        showUploadFeedback("Select one or more files or a ZIP.", true);
-        return;
-      }
-      const form = new FormData();
-      for (const f of fileInput.files) form.append("files", f);
-      try {
-        const res = await fetch(API + "/upload/files", { method: "POST", body: form });
-        const data = await res.json();
-        if (data.ok) {
-          showUploadFeedback("Added " + data.count + " file(s).");
-          fileInput.value = "";
-          pollStatus();
-        } else {
-          showUploadFeedback(data.error || "Upload failed", true);
-        }
-      } catch (e) {
-        showUploadFeedback("Request failed: " + e.message, true);
-      }
-    });
-
     startAgent.addEventListener("click", async () => {
       try {
         await fetch(API + "/agent/start", { method: "POST" });
-        pollStatus();
       } catch (e) {
         statusText.textContent = "Error: " + e.message;
       }
@@ -233,28 +681,159 @@
       } catch (_) {}
     });
 
+    const agentCard = document.getElementById("agentCard");
+    const STAGE_ORDER = ["extract", "organize", "connect", "deduce", "induce", "organize-again", "validate"];
+    const STAGE_NAMES = {
+      extract: "Extract insights",
+      organize: "Organize vault",
+      connect: "Link notes",
+      deduce: "Deductive reasoning",
+      induce: "Inductive reasoning",
+      "organize-again": "Build MOCs",
+      validate: "Validation"
+    };
     function updateUI(data) {
-      statusDot.className = "status-dot " + (data.status || "idle");
-      statusText.textContent = data.currentTask || (data.status === "processing" ? "Processing…" : "Idle");
+      const status = data.status || "idle";
+      statusDot.className = "status-dot " + status;
+      statusText.textContent = data.currentTask || (status === "processing" ? "Processing…" : status === "stopping" ? "Stopping…" : "Idle");
+      agentCard.classList.toggle("processing", status === "processing" || status === "stopping");
+      const stage = data.currentStage;
+      const queue = Array.isArray(data.queue) ? data.queue : [];
+      const processedIds = Array.isArray(data.processedSourceIds) ? data.processedSourceIds : [];
+      const processedLabels = Array.isArray(data.processedSourceLabels) ? data.processedSourceLabels : [];
+      const processedCount = data.progressProcessedCount != null ? data.progressProcessedCount : processedIds.length;
+
+      if (stage && STAGE_ORDER.includes(stage)) {
+        const idx = STAGE_ORDER.indexOf(stage) + 1;
+        stageLabel.textContent = "Stage " + idx + "/7: " + (STAGE_NAMES[stage] || stage);
+        stageLabel.style.display = "";
+      } else {
+        stageLabel.textContent = "";
+        stageLabel.style.display = "none";
+      }
+
       if (data.queueLength != null) {
         queueCount.textContent = data.queueLength > 0 ? "Queue: " + data.queueLength : "";
+      }
+
+      var currentStageQueue = stage ? queue.filter(function(t) { return t.stage === stage; }) : [];
+      var totalInStage = 0;
+      var doneInStage = 0;
+      var showBar = false;
+      if (stage === "extract") {
+        totalInStage = processedCount + currentStageQueue.length + (status === "processing" ? 1 : 0);
+        doneInStage = processedCount + (status === "processing" ? 1 : 0);
+        showBar = totalInStage > 0;
+      } else if (stage) {
+        totalInStage = currentStageQueue.length + (status === "processing" ? 1 : 0);
+        doneInStage = status === "processing" ? 1 : 0;
+        showBar = totalInStage > 0;
+      }
+      if (stage && (totalInStage > 0 || stage)) {
+        stageProgressBlock.style.display = "";
+        stageProgressText.textContent = showBar
+          ? STAGE_NAMES[stage] + " — " + Math.min(doneInStage, totalInStage) + " of " + totalInStage
+          : STAGE_NAMES[stage] + (currentStageQueue.length > 0 ? " (" + (currentStageQueue.length + (status === "processing" ? 1 : 0)) + " tasks)" : "");
+        var pct = showBar && totalInStage ? Math.round((100 * Math.min(doneInStage, totalInStage)) / totalInStage) : 0;
+        stageProgressFill.style.width = pct + "%";
+      } else {
+        stageProgressBlock.style.display = "none";
+      }
+
+      if (queue.length > 0 || processedIds.length > 0) {
+        sourcesSection.style.display = "";
+        var maxShow = 15;
+        queuedList.innerHTML = "";
+        queue.slice(0, maxShow).forEach(function(t) {
+          var li = document.createElement("li");
+          li.textContent = t.label || t.kind;
+          queuedList.appendChild(li);
+        });
+        if (queue.length > maxShow) {
+          var li = document.createElement("li");
+          li.className = "empty";
+          li.textContent = "and " + (queue.length - maxShow) + " more…";
+          queuedList.appendChild(li);
+        }
+        if (queue.length === 0) {
+          var li = document.createElement("li");
+          li.className = "empty";
+          li.textContent = "None";
+          queuedList.appendChild(li);
+        }
+        processedList.innerHTML = "";
+        processedIds.slice(0, maxShow).forEach(function(id, i) {
+          var li = document.createElement("li");
+          li.textContent = processedLabels[i] != null ? processedLabels[i] : id;
+          processedList.appendChild(li);
+        });
+        if (processedIds.length > maxShow) {
+          var li = document.createElement("li");
+          li.className = "empty";
+          li.textContent = "and " + (processedIds.length - maxShow) + " more…";
+          processedList.appendChild(li);
+        }
+        if (processedIds.length === 0) {
+          var li = document.createElement("li");
+          li.className = "empty";
+          li.textContent = "None yet";
+          processedList.appendChild(li);
+        }
+      } else {
+        sourcesSection.style.display = "none";
+      }
+
+      const lastUpdated = data.progressLastUpdated || null;
+      if (processedCount > 0 || lastUpdated) {
+        var parts = [];
+        if (processedCount > 0) parts.push(processedCount + " source(s) analyzed");
+        if (lastUpdated) parts.push(formatLastSaved(lastUpdated));
+        progressSummary.textContent = parts.join(" · ");
+        progressSummary.style.display = "";
+      } else {
+        progressSummary.textContent = "Progress is saved when you run the agent; you can leave and come back.";
+        progressSummary.style.display = "";
       }
       if (Array.isArray(data.log)) {
         logEl.textContent = data.log.slice(-30).join("\n");
         logEl.scrollTop = logEl.scrollHeight;
       }
+      const needVault = !data.vaultPath;
+      const needKey = data.apiKeyConfigured === false;
+      if (needVault || needKey) {
+        agentSetupHint.style.display = "block";
+        agentSetupHint.className = "feedback error";
+        var parts = [];
+        if (needVault) parts.push("Set vault path and click Save config");
+        if (needKey) parts.push("Add OPENAI_API_KEY to the .env file and restart the server");
+        agentSetupHint.textContent = "To start the agent: " + parts.join("; ") + ".";
+      } else {
+        agentSetupHint.style.display = "none";
+      }
+      if (data.sourceDir) {
+        folderHierarchyCard.style.display = "";
+        var hasTree = sourceTreeWrap.querySelector(".tree-node-wrap");
+        if (!hasTree) fetchSourceTree();
+        else if (data.status === "processing") scheduleTreeRefresh();
+      } else {
+        folderHierarchyCard.style.display = "none";
+      }
     }
 
-    async function pollStatus() {
-      try {
-        const res = await fetch(API + "/agent/status");
-        const data = await res.json();
-        updateUI(data);
-      } catch (_) {}
+    function connectStream() {
+      var es = new EventSource(API + "/agent/stream");
+      es.onmessage = function(ev) {
+        try {
+          var data = JSON.parse(ev.data);
+          updateUI(data);
+        } catch (_) {}
+      };
+      es.onerror = function() {
+        es.close();
+        setTimeout(connectStream, 2000);
+      };
     }
-
-    setInterval(pollStatus, 2000);
-    pollStatus();
+    connectStream();
   </script>
 </body>
 </html>
