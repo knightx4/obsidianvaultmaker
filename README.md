@@ -1,6 +1,6 @@
 # Vault Builder Agent
 
-Builds an Obsidian vault from uploaded files: breaks content into atomic notes and adds `[[links]]` between related ideas.
+Builds an **insight-only** Obsidian vault from your sources. The agent reads each document (or folder), extracts key insights and ideas, and writes only those as linked notes—no raw files in the vault.
 
 ## Run
 
@@ -10,11 +10,11 @@ Builds an Obsidian vault from uploaded files: breaks content into atomic notes a
 
 ## Usage
 
-1. **Vault**: Enter a vault name and the full path to your vault folder (e.g. `/Users/you/Documents/MyVault`). Click *Save vault config*.
-2. **Upload**: Add `.md`, `.txt`, `.pdf`, Word (`.docx`/`.doc`), or PowerPoint (`.pptx`/`.ppt`) files, or upload a ZIP that preserves folder structure. PDF/Word/PowerPoint are converted to plain text and saved as `.md` for the agent to analyze.
-3. **Agent**: Click *Start agent*. It will split notes into atomic concepts and add links. Use *Stop agent* to pause. Status and a short log update every few seconds.
+1. **Vault**: Set the vault path (where the **insight** vault will live). No raw files are written here—only insight notes.
+2. **Upload / Import**: Add files or a ZIP, or use *Import from folder* to point at a folder. Source text is staged; the agent will extract insights from each source.
+3. **Agent**: Click *Start agent*. It processes each source, writes insight notes under `Insights/`, and links them. You can stop or let it run; it can keep linking and refining.
 
 ## Tech
 
-- Node + TypeScript, Express, multer (uploads), adm-zip (ZIP), officeparser (PDF/Word/PowerPoint text extraction), OpenAI.
-- Agent: in-memory queue, split pass (LLM) + link pass (LLM); one note per task so you can stop anytime.
+- Node + TypeScript, Express, multer, adm-zip, officeparser (PDF/Word/PowerPoint text extraction), OpenAI.
+- Sources are stored in `data/sources/` (staging); the vault contains only `Insights/*.md` and their `[[links]]`.
