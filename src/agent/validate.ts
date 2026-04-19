@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir } from "fs/promises";
 import path from "path";
 import matter from "gray-matter";
+import { randomUUID } from "crypto";
 import type { LLMClient } from "../llm/client.js";
 import { appendLog } from "./queue.js";
 import { listMarkdownFiles, readNote } from "./link.js";
@@ -8,6 +9,8 @@ import { parseRelationshipLinksFromContent, stripMarkdownFences } from "./prompt
 import { loadAgentConfig } from "../storage/agentConfig.js";
 import { indexNote } from "../retrieval/embeddingIndex.js";
 import { getEmbeddingClient } from "../retrieval/retrieve.js";
+import { upsertAtom } from "../storage/atomsStore.js";
+import { getVaultmakerVersion } from "../storage/manifest.js";
 
 const MOC_DIR = "MOCs";
 const MOC_PREFIX = MOC_DIR + "/";
@@ -96,7 +99,8 @@ async function createSynthesisNote(
   vaultPath: string,
   fromTitle: string,
   toTitle: string,
-  existingTitles: Set<string>
+  existingTitles: Set<string>,
+  dryRun: boolean
 ): Promise<string | null> {
   const safeName = `Conflict-${fromTitle}-vs-${toTitle}`.replace(/[/\\?%*:|"<>]/g, "-").trim();
   if (existingTitles.has(safeName)) return null;
@@ -118,19 +122,39 @@ async function createSynthesisNote(
   const content = stripMarkdownFences(raw.trim());
   if (!content) return null;
 
+  const atomId = randomUUID();
   const frontmatter: Record<string, unknown> = {
     type: "Conflict",
     source: "validate",
+    atom_id: atomId,
+    related_titles: [fromTitle, toTitle],
   };
   const output = matter.stringify(content, frontmatter, {
     delimiters: ["---", "---"],
   });
   const dir = path.join(vaultPath, VALIDATION_DIR, CONFLICTS_SUBDIR);
-  await mkdir(dir, { recursive: true });
   const rel = path.join(VALIDATION_DIR, CONFLICTS_SUBDIR, `${safeName}.md`);
   const full = path.join(vaultPath, rel);
+  if (dryRun) {
+    appendLog(`Dry-run Validation: would write ${rel}`);
+    return rel;
+  }
+  await mkdir(dir, { recursive: true });
   await writeFile(full, output, "utf-8");
   appendLog(`Validation: synthesis note ${rel}`);
+
+  await upsertAtom(vaultPath, {
+    atomId,
+    kind: "other",
+    title: safeName,
+    type: "Conflict",
+    path: rel,
+    chunkIds: [],
+    evidenceRefs: [],
+    provenance: "validated",
+    pipelineVersion: getVaultmakerVersion(),
+    extractedAt: new Date().toISOString(),
+  });
   const snippet = content.slice(0, 300);
   let emb: number[] | undefined;
   const config = await loadAgentConfig(vaultPath);
@@ -154,7 +178,8 @@ async function createSynthesisNote(
  */
 export async function runValidation(
   vaultPath: string,
-  llm: LLMClient | null
+  llm: LLMClient | null,
+  options?: { dryRun?: boolean }
 ): Promise<ValidationReport> {
   const { titles, typeByTitle, linksByTitle } = await loadVaultGraph(vaultPath);
   const conflicts = findContradictions(linksByTitle);
@@ -162,6 +187,8 @@ export async function runValidation(
 
   const existingTitles = new Set(titles);
   const synthesisNotesCreated: string[] = [];
+
+  const dryRun = options?.dryRun ?? false;
 
   if (llm) {
     const seen = new Set<string>();
@@ -174,7 +201,8 @@ export async function runValidation(
         vaultPath,
         fromTitle,
         toTitle,
-        existingTitles
+        existingTitles,
+        dryRun
       );
       if (rel) {
         synthesisNotesCreated.push(rel);

@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir } from "fs/promises";
 import path from "path";
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
 
 const VAULTMAKER_DIR = ".vaultmaker";
 const SOURCES_SUBDIR = "sources";
@@ -10,6 +10,8 @@ export interface StagedSource {
   path: string;
   name: string;
   text: string;
+  /** sha256 hex of normalized text, for drift detection */
+  contentHash?: string;
 }
 
 /** Directory where staged source files are stored for a vault (inside the vault folder). */
@@ -34,7 +36,9 @@ export async function saveSource(
   const dir = getSourcesDir(vaultPath);
   await mkdir(dir, { recursive: true });
   const file = path.join(dir, `${id}.json`);
-  await writeFile(file, JSON.stringify({ id, ...data }, null, 0), "utf-8");
+  const contentHash =
+    data.contentHash ?? createHash("sha256").update(data.text, "utf8").digest("hex");
+  await writeFile(file, JSON.stringify({ id, ...data, contentHash }, null, 0), "utf-8");
 }
 
 export async function loadSource(vaultPath: string, id: string): Promise<StagedSource | null> {
