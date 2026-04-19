@@ -97,3 +97,13 @@ export async function updateRunManifest(
     models: patch.models,
   });
 }
+
+/** Append a completed pipeline stage for the current run (matches lastRunId). */
+export async function appendStageCompleted(vaultPath: string, runId: string, stage: string): Promise<void> {
+  const m = await loadManifest(vaultPath);
+  if (m.lastRunId !== runId) return;
+  if (m.stagesCompleted.includes(stage)) return;
+  await saveManifest(vaultPath, {
+    stagesCompleted: [...m.stagesCompleted, stage],
+  });
+}

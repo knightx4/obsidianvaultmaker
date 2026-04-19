@@ -32,7 +32,7 @@ import { runDeduceForNote } from "./deduce.js";
 import { runInduceForMoc } from "./induce.js";
 import { runValidation } from "./validate.js";
 import { loadSource } from "../storage/sources.js";
-import { updateRunManifest } from "../storage/manifest.js";
+import { updateRunManifest, appendStageCompleted } from "../storage/manifest.js";
 import { buildGraph } from "../graph/buildGraph.js";
 import { setRunContext, clearRunContext } from "./runContext.js";
 
@@ -239,11 +239,16 @@ export async function runLoop(options?: { dryRun?: boolean }): Promise<void> {
         if (getQueueLength() === 0) {
           const idx = STAGES.indexOf(currentStage);
           if (idx >= 0 && idx < STAGES.length - 1) {
+            const completedStage = currentStage;
             state.currentStage = STAGES[idx + 1];
-            appendLog(`Stage complete: ${currentStage} → ${STAGES[idx + 1]}`);
+            appendLog(`Stage complete: ${completedStage} → ${STAGES[idx + 1]}`);
+            await appendStageCompleted(vaultPath, runId, completedStage);
             await enqueueWorkForStage(STAGES[idx + 1], vaultPath);
             await persistProgress(vaultPath);
             continue;
+          }
+          if (idx >= 0) {
+            await appendStageCompleted(vaultPath, runId, currentStage);
           }
           appendLog("Queue empty. Idle.");
           state.currentStage = null;
@@ -258,9 +263,11 @@ export async function runLoop(options?: { dryRun?: boolean }): Promise<void> {
           await persistProgress(vaultPath);
           return;
         }
+        const completedStage = currentStage;
         const nextStage = STAGES[idx + 1];
         state.currentStage = nextStage;
-        appendLog(`Stage complete: ${currentStage} → ${nextStage}`);
+        appendLog(`Stage complete: ${completedStage} → ${nextStage}`);
+        await appendStageCompleted(vaultPath, runId, completedStage);
         await enqueueWorkForStage(nextStage, vaultPath);
         await persistProgress(vaultPath);
         continue;
