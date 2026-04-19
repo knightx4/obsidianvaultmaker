@@ -203,7 +203,7 @@ export async function runLoop(options?: { dryRun?: boolean }): Promise<void> {
     return;
   }
   if (llm == null) {
-    appendLog("Cannot start: add OPENAI_API_KEY to the .env file in the app folder and restart the server.");
+    appendLog("Cannot start: add ANTHROPIC_API_KEY to the .env file in the app folder and restart the server.");
     return;
   }
   if (state.status === "processing") {
@@ -220,7 +220,10 @@ export async function runLoop(options?: { dryRun?: boolean }): Promise<void> {
     runId,
     dryRun,
     stagesCompleted: [],
-    models: { chat: "gpt-4o-mini", embedding: "text-embedding-3-small" },
+    models: {
+      chat: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-20250514",
+      embedding: process.env.VOYAGE_EMBEDDING_MODEL ?? "voyage-3-large",
+    },
   });
   if (dryRun) {
     appendLog(`Dry-run mode: ${runId} (no insight files will be written).`);

@@ -4,7 +4,8 @@ import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 import { existsSync, accessSync } from "fs";
-import { createOpenAIClient, createOpenAIEmbeddingClient } from "./llm/openai.js";
+import { createAnthropicClient } from "./llm/anthropic.js";
+import { createVoyageEmbeddingClient } from "./llm/voyage.js";
 import { setEmbeddingClient } from "./retrieval/retrieve.js";
 import { setLLM, setAgentVault, setSourceDir } from "./agent/loop.js";
 import { loadVaultConfig } from "./storage/vaultConfig.js";
@@ -42,12 +43,23 @@ dotenv.config({ path: findEnvPath(__dirname) });
 const publicDir = findPublicDir(__dirname);
 const PORT = Number(process.env.PORT) || 3840;
 
-const apiKey = process.env.OPENAI_API_KEY;
-if (apiKey) {
-  setLLM(createOpenAIClient(apiKey));
-  setEmbeddingClient(createOpenAIEmbeddingClient(apiKey));
+const anthropicKey = process.env.ANTHROPIC_API_KEY;
+const voyageKey = process.env.VOYAGE_API_KEY;
+
+if (anthropicKey) {
+  setLLM(createAnthropicClient(anthropicKey));
 } else {
-  console.warn("OPENAI_API_KEY is not set. Add it to the .env file in the app folder to use the agent.");
+  console.warn(
+    "ANTHROPIC_API_KEY is not set. Add it to the .env file in the app folder to use the agent."
+  );
+}
+
+if (voyageKey) {
+  setEmbeddingClient(createVoyageEmbeddingClient(voyageKey));
+} else {
+  console.warn(
+    "VOYAGE_API_KEY is not set. Chunk/note retrieval will use keyword fallback only (no embeddings)."
+  );
   setEmbeddingClient(null);
 }
 

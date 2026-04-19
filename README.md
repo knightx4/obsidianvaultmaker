@@ -5,7 +5,7 @@ Builds an **insight-only** Obsidian vault from your sources. The agent reads eac
 ## Run
 
 1. `npm install` (from this folder, or from repo root run `npm run install:app`)
-2. Copy `.env.example` to `.env` and set `OPENAI_API_KEY`
+2. Copy `.env.example` to `.env` and set **`ANTHROPIC_API_KEY`** (Claude). Set **`VOYAGE_API_KEY`** for semantic retrieval over notes/chunks; without it, retrieval uses keyword matching only.
 3. `npm run dev` — server runs at http://localhost:3840 (from this folder or from repo root)
 
 ## Usage
@@ -16,5 +16,5 @@ Builds an **insight-only** Obsidian vault from your sources. The agent reads eac
 
 ## Tech
 
-- Node + TypeScript, Express, multer, adm-zip, officeparser (PDF/Word/PowerPoint text extraction), OpenAI.
+- Node + TypeScript, Express, officeparser (PDF/Word/PowerPoint text extraction), Anthropic Claude (Messages API), optional Voyage AI embeddings.
 - Staged source text and agent state (progress, source index, embedding index, config) live under the vault at `.vaultmaker/` so the vault is self-contained and portable; another user or machine can open the same vault and run their own analysis.
