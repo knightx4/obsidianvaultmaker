@@ -12,6 +12,7 @@ import { startSourceWatcher } from "./watcher/sourceWatcher.js";
 import { vaultRouter } from "./routes/vault.js";
 import { uploadRouter } from "./routes/upload.js";
 import { agentRouter } from "./routes/agent.js";
+import { knowledgeRouter } from "./routes/knowledge.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -57,6 +58,7 @@ app.use(express.json());
 app.use("/api/vault", vaultRouter);
 app.use("/api/upload", uploadRouter);
 app.use("/api/agent", agentRouter);
+app.use("/api/knowledge", knowledgeRouter);
 
 app.use(express.static(publicDir));
 app.get("*", (_req, res) => {

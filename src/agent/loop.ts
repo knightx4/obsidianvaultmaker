@@ -1,4 +1,5 @@
 import path from "path";
+import { randomUUID } from "crypto";
 import type { LLMClient } from "../llm/client.js";
 import type { AgentState, QueuedTask, Stage } from "./types.js";
 import { STAGES } from "./types.js";
@@ -31,6 +32,9 @@ import { runDeduceForNote } from "./deduce.js";
 import { runInduceForMoc } from "./induce.js";
 import { runValidation } from "./validate.js";
 import { loadSource } from "../storage/sources.js";
+import { updateRunManifest, appendStageCompleted } from "../storage/manifest.js";
+import { buildGraph } from "../graph/buildGraph.js";
+import { setRunContext, clearRunContext } from "./runContext.js";
 
 let state: AgentState = {
   status: "idle",
@@ -167,6 +171,16 @@ async function enqueueWorkForStage(stage: Stage, vaultPath: string): Promise<voi
   }
 }
 
+async function maybeRebuildGraph(vaultPath: string): Promise<void> {
+  try {
+    const config = await loadAgentConfig(vaultPath);
+    if (!config.graphAutoRebuild) return;
+    await buildGraph(vaultPath);
+  } catch {
+    // non-fatal
+  }
+}
+
 async function persistProgress(vaultPath: string, completedSourceId?: string): Promise<void> {
   try {
     const loaded = await loadProgress(vaultPath);
@@ -183,7 +197,7 @@ async function persistProgress(vaultPath: string, completedSourceId?: string): P
   }
 }
 
-export async function runLoop(): Promise<void> {
+export async function runLoop(options?: { dryRun?: boolean }): Promise<void> {
   if (state.vaultPath == null) {
     appendLog("Cannot start: set the vault path in the Vault section and click Save config.");
     return;
@@ -197,11 +211,24 @@ export async function runLoop(): Promise<void> {
     return;
   }
 
+  const vaultPath = state.vaultPath;
+  const config = await loadAgentConfig(vaultPath);
+  const dryRun = options?.dryRun ?? config.dryRun;
+  const runId = randomUUID();
+  setRunContext({ runId, dryRun });
+  await updateRunManifest(vaultPath, {
+    runId,
+    dryRun,
+    stagesCompleted: [],
+    models: { chat: "gpt-4o-mini", embedding: "text-embedding-3-small" },
+  });
+  if (dryRun) {
+    appendLog(`Dry-run mode: ${runId} (no insight files will be written).`);
+  }
+
   stopRequested = false;
   state.currentStage = STAGES[0];
   setStatus("processing", null);
-
-  const vaultPath = state.vaultPath;
 
   try {
     while (!stopRequested) {
@@ -212,11 +239,16 @@ export async function runLoop(): Promise<void> {
         if (getQueueLength() === 0) {
           const idx = STAGES.indexOf(currentStage);
           if (idx >= 0 && idx < STAGES.length - 1) {
+            const completedStage = currentStage;
             state.currentStage = STAGES[idx + 1];
-            appendLog(`Stage complete: ${currentStage} → ${STAGES[idx + 1]}`);
+            appendLog(`Stage complete: ${completedStage} → ${STAGES[idx + 1]}`);
+            await appendStageCompleted(vaultPath, runId, completedStage);
             await enqueueWorkForStage(STAGES[idx + 1], vaultPath);
             await persistProgress(vaultPath);
             continue;
+          }
+          if (idx >= 0) {
+            await appendStageCompleted(vaultPath, runId, currentStage);
           }
           appendLog("Queue empty. Idle.");
           state.currentStage = null;
@@ -231,9 +263,11 @@ export async function runLoop(): Promise<void> {
           await persistProgress(vaultPath);
           return;
         }
+        const completedStage = currentStage;
         const nextStage = STAGES[idx + 1];
         state.currentStage = nextStage;
-        appendLog(`Stage complete: ${currentStage} → ${nextStage}`);
+        appendLog(`Stage complete: ${completedStage} → ${nextStage}`);
+        await appendStageCompleted(vaultPath, runId, completedStage);
         await enqueueWorkForStage(nextStage, vaultPath);
         await persistProgress(vaultPath);
         continue;
@@ -252,8 +286,16 @@ export async function runLoop(): Promise<void> {
             continue;
           }
           setStatus("processing", `Extract: ${source.name}`);
-          await extractInsightsFromSource(llm, vaultPath, source.text, source.name);
+          await extractInsightsFromSource(
+            llm,
+            vaultPath,
+            source.text,
+            source.name,
+            sourceId,
+            source.path
+          );
           await persistProgress(vaultPath, sourceId);
+          await maybeRebuildGraph(vaultPath);
           const remaining = getQueueLength();
           if (remaining > 0) appendLog(`${remaining} tasks left in queue.`);
         } catch (err) {
@@ -264,6 +306,7 @@ export async function runLoop(): Promise<void> {
         try {
           await runOrganizeVault(llm, vaultPath, false);
           await persistProgress(vaultPath);
+          await maybeRebuildGraph(vaultPath);
         } catch (err) {
           appendLog(`Error organizing vault: ${(err as Error).message}`);
         }
@@ -272,6 +315,7 @@ export async function runLoop(): Promise<void> {
         try {
           await runOrganizeVault(llm, vaultPath, true);
           await persistProgress(vaultPath);
+          await maybeRebuildGraph(vaultPath);
         } catch (err) {
           appendLog(`Error building MOCs: ${(err as Error).message}`);
         }
@@ -290,23 +334,27 @@ export async function runLoop(): Promise<void> {
           const currentTitle = path.basename(notePath, ".md");
           const others = relevantTitles.filter((t) => t !== currentTitle);
           if (others.length > 0) {
-            await addLinksToNote(llm, vaultPath, notePath, content, others);
-            const updatedContent = await readNote(vaultPath, notePath);
-            const snippet = updatedContent.slice(0, 300);
-            let emb: number[] | undefined;
-            if (useEmbeddings) {
-              const ec = getEmbeddingClient();
-              if (ec) {
-                try {
-                  emb = await ec.embed(`${currentTitle} ${snippet}`.slice(0, 8000));
-                } catch {
-                  // index without embedding
+            const updatedContent = await addLinksToNote(llm, vaultPath, notePath, content, others, {
+              dryRun,
+            });
+            if (updatedContent && !dryRun) {
+              const snippet = updatedContent.slice(0, 300);
+              let emb: number[] | undefined;
+              if (useEmbeddings) {
+                const ec = getEmbeddingClient();
+                if (ec) {
+                  try {
+                    emb = await ec.embed(`${currentTitle} ${snippet}`.slice(0, 8000));
+                  } catch {
+                    // index without embedding
+                  }
                 }
               }
+              await indexNote(vaultPath, currentTitle, notePath, snippet, emb);
             }
-            await indexNote(vaultPath, currentTitle, notePath, snippet, emb);
           }
           await persistProgress(vaultPath);
+          await maybeRebuildGraph(vaultPath);
         } catch (err) {
           appendLog(`Error linking ${notePath}: ${(err as Error).message}`);
         }
@@ -319,9 +367,11 @@ export async function runLoop(): Promise<void> {
             llm,
             vaultPath,
             notePath,
-            new Set(existingTitles)
+            new Set(existingTitles),
+            { dryRun }
           );
           await persistProgress(vaultPath);
+          await maybeRebuildGraph(vaultPath);
         } catch (err) {
           appendLog(`Error deduce ${notePath}: ${(err as Error).message}`);
         }
@@ -339,9 +389,11 @@ export async function runLoop(): Promise<void> {
             task.payload.mocTitle,
             task.payload.noteTitles,
             new Set(existingTitles),
-            task.payload.mocSummary
+            task.payload.mocSummary,
+            { dryRun }
           );
           await persistProgress(vaultPath);
+          await maybeRebuildGraph(vaultPath);
         } catch (err) {
           appendLog(
             `Error induce ${task.payload.mocTitle}: ${(err as Error).message}`
@@ -350,8 +402,9 @@ export async function runLoop(): Promise<void> {
       } else if (task.kind === "validate") {
         setStatus("processing", "Validation");
         try {
-          await runValidation(vaultPath, llm);
+          await runValidation(vaultPath, llm, { dryRun });
           await persistProgress(vaultPath);
+          await maybeRebuildGraph(vaultPath);
         } catch (err) {
           appendLog(`Error validation: ${(err as Error).message}`);
         }
@@ -365,6 +418,8 @@ export async function runLoop(): Promise<void> {
     appendLog(`Agent error: ${(err as Error).message}`);
     state.currentStage = null;
     setStatus("idle", null);
+  } finally {
+    clearRunContext();
   }
 }
 
