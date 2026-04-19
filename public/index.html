@@ -865,7 +865,7 @@
         agentSetupHint.className = "feedback error";
         var parts = [];
         if (needVault) parts.push("Set vault path and click Create vault");
-        if (needKey) parts.push("Add OPENAI_API_KEY to the .env file and restart the server");
+        if (needKey) parts.push("Add ANTHROPIC_API_KEY to the .env file and restart the server");
         agentSetupHint.textContent = "To start the agent: " + parts.join("; ") + ".";
       } else {
         agentSetupHint.style.display = "none";

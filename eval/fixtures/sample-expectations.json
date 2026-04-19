@@ -1,0 +1,7 @@
+{
+  "minExtractedAtoms": 0,
+  "minCitationCoverage": 0,
+  "minGraphNodes": 0,
+  "minGraphEdges": 0,
+  "description": "Raise thresholds in CI once you have a golden vault; defaults pass on empty vaults."
+}

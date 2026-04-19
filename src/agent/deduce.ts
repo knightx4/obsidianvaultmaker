@@ -1,6 +1,7 @@
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import matter from "gray-matter";
+import { randomUUID } from "crypto";
 import type { LLMClient } from "../llm/client.js";
 import { appendLog } from "./queue.js";
 import {
@@ -12,6 +13,11 @@ import { parseRelationshipLinksFromContent, stripMarkdownFences } from "./prompt
 import { loadAgentConfig } from "../storage/agentConfig.js";
 import { indexNote } from "../retrieval/embeddingIndex.js";
 import { getEmbeddingClient } from "../retrieval/retrieve.js";
+import { loadAtomsFile, upsertAtom, upsertEdges } from "../storage/atomsStore.js";
+import { getVaultmakerVersion } from "../storage/manifest.js";
+import { appendDraftAtoms } from "../storage/draft.js";
+import { getRunContext } from "./runContext.js";
+import { atomEdgeRecordFromTitles } from "../graph/buildGraph.js";
 
 const INSIGHTS_DIR = "Insights";
 const MOC_DIR = "MOCs";
@@ -31,6 +37,12 @@ Rules:
 /**
  * Build a reverse index: for each note title, list { path, relationship } of notes that link TO it with Evidence for / Supports / Requires.
  */
+async function getAtomIdForTitle(vaultPath: string, title: string): Promise<string | null> {
+  const f = await loadAtomsFile(vaultPath);
+  const a = f.atoms.find((x) => x.title === title);
+  return a?.atomId ?? null;
+}
+
 async function buildReverseLinkIndex(
   vaultPath: string,
   insightFiles: string[]
@@ -64,7 +76,8 @@ export async function runDeduceForNote(
   llm: LLMClient,
   vaultPath: string,
   relativePath: string,
-  allInsightTitles: Set<string>
+  allInsightTitles: Set<string>,
+  options?: { dryRun?: boolean }
 ): Promise<string | null> {
   const raw = await readNote(vaultPath, relativePath);
   const parsed = matter(raw);
@@ -125,18 +138,69 @@ Given these linked premises, what is the unspoken conclusion? If the conclusion 
   if (allInsightTitles.has(newTitle)) return null;
 
   const content = stripMarkdownFences(conclusion.content.trim());
+  const atomId = randomUUID();
+  const premiseAtomIds: string[] = [];
+  for (const t of premiseTitles) {
+    const aid = await getAtomIdForTitle(vaultPath, t);
+    if (aid) premiseAtomIds.push(aid);
+  }
+  const currentAtomId = await getAtomIdForTitle(vaultPath, currentTitle);
+
   const frontmatter: Record<string, unknown> = {
     type: "Conclusion",
     source: "deduce",
+    atom_id: atomId,
+    premise_atom_ids: premiseAtomIds,
   };
+  if (currentAtomId) frontmatter.parent_atom_ids = [currentAtomId];
+
   const output = matter.stringify(content, frontmatter, {
     delimiters: ["---", "---"],
   });
   const newRel = path.join(INSIGHTS_DIR, `${newTitle}.md`);
   const fullPath = path.join(vaultPath, newRel);
+
+  const { dryRun, runId } = getRunContext();
+  const effectiveDry = options?.dryRun ?? dryRun;
+
+  if (effectiveDry && runId) {
+    await appendDraftAtoms(vaultPath, runId, [
+      {
+        atomId,
+        kind: "conclusion",
+        title: newTitle,
+        path: newRel,
+        provenance: "inferred",
+        premise_atom_ids: premiseAtomIds,
+      },
+    ]);
+    appendLog(`Dry-run Deduce: would write ${newRel}`);
+    return newRel;
+  }
+
   await mkdir(path.dirname(fullPath), { recursive: true });
   await writeFile(fullPath, output, "utf-8");
   appendLog(`Deduce: ${newRel}`);
+
+  await upsertAtom(vaultPath, {
+    atomId,
+    kind: "conclusion",
+    title: newTitle,
+    type: "Conclusion",
+    path: newRel,
+    chunkIds: [],
+    evidenceRefs: [],
+    provenance: "inferred",
+    pipelineVersion: getVaultmakerVersion(),
+    extractedAt: new Date().toISOString(),
+  });
+
+  const edges = [];
+  for (const pid of premiseAtomIds) {
+    edges.push(atomEdgeRecordFromTitles(pid, atomId, "Conclusion of", "inferred"));
+  }
+  if (edges.length > 0) await upsertEdges(vaultPath, edges);
+
   const snippet = content.slice(0, 300);
   let emb: number[] | undefined;
   const config = await loadAgentConfig(vaultPath);

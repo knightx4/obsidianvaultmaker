@@ -128,9 +128,10 @@ agentRouter.get("/stream", async (req, res) => {
   });
 });
 
-agentRouter.post("/start", async (_req, res) => {
-  res.json({ ok: true });
-  runLoop().catch(() => {});
+agentRouter.post("/start", async (req, res) => {
+  const dryRun = Boolean((req.body as { dryRun?: boolean })?.dryRun);
+  res.json({ ok: true, dryRun });
+  runLoop({ dryRun }).catch(() => {});
 });
 
 /** List immediate children of one directory only (lazy loading). Query param: path = relative path from source root (empty = root). */

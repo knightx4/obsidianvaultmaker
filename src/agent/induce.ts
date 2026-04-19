@@ -1,6 +1,7 @@
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import matter from "gray-matter";
+import { randomUUID } from "crypto";
 import type { LLMClient } from "../llm/client.js";
 import { appendLog } from "./queue.js";
 import { readNote, findPathByTitle } from "./link.js";
@@ -8,6 +9,10 @@ import { RELATIONSHIP_TAXONOMY, stripMarkdownFences } from "./prompts.js";
 import { loadAgentConfig } from "../storage/agentConfig.js";
 import { indexNote } from "../retrieval/embeddingIndex.js";
 import { getEmbeddingClient } from "../retrieval/retrieve.js";
+import { upsertAtom } from "../storage/atomsStore.js";
+import { getVaultmakerVersion } from "../storage/manifest.js";
+import { appendDraftAtoms } from "../storage/draft.js";
+import { getRunContext } from "./runContext.js";
 
 const INSIGHTS_DIR = "Insights";
 
@@ -29,7 +34,8 @@ export async function runInduceForMoc(
   mocTitle: string,
   noteTitles: string[],
   existingTitles: Set<string>,
-  mocSummary?: string
+  mocSummary?: string,
+  options?: { dryRun?: boolean }
 ): Promise<string[]> {
   if (noteTitles.length === 0) return [];
 
@@ -81,26 +87,64 @@ Identify recurring patterns or hypotheses. For each, provide title, content (wit
   }
   const themes = Array.isArray(parsed.themes) ? parsed.themes : [];
   const created: string[] = [];
+  const { dryRun, runId } = getRunContext();
+  const effectiveDry = options?.dryRun ?? dryRun;
 
   for (const theme of themes) {
     if (!theme.title?.trim() || !theme.content?.trim()) continue;
     const safeTitle = theme.title.replace(/[/\\?%*:|"<>]/g, "-").trim() || "Untitled";
     if (existingTitles.has(safeTitle)) continue;
 
+    const atomId = randomUUID();
     const frontmatter: Record<string, unknown> = {
       type: "Theme",
       source: "induce",
+      atom_id: atomId,
+      moc_title: mocTitle,
+      supporting_note_titles: Array.isArray(theme.noteTitles) ? theme.noteTitles : noteTitles,
     };
     const output = matter.stringify(stripMarkdownFences(theme.content.trim()), frontmatter, {
       delimiters: ["---", "---"],
     });
     const newRel = path.join(INSIGHTS_DIR, `${safeTitle}.md`);
     const fullPath = path.join(vaultPath, newRel);
+
+    if (effectiveDry && runId) {
+      await appendDraftAtoms(vaultPath, runId, [
+        {
+          atomId,
+          kind: "theme",
+          title: safeTitle,
+          path: newRel,
+          provenance: "inferred",
+          moc_title: mocTitle,
+        },
+      ]);
+      appendLog(`Dry-run Induce: would write ${newRel}`);
+      created.push(newRel);
+      existingTitles.add(safeTitle);
+      continue;
+    }
+
     await mkdir(path.dirname(fullPath), { recursive: true });
     await writeFile(fullPath, output, "utf-8");
     created.push(newRel);
     existingTitles.add(safeTitle);
     appendLog(`Induce: ${newRel}`);
+
+    await upsertAtom(vaultPath, {
+      atomId,
+      kind: "theme",
+      title: safeTitle,
+      type: "Theme",
+      path: newRel,
+      chunkIds: [],
+      evidenceRefs: [],
+      provenance: "inferred",
+      pipelineVersion: getVaultmakerVersion(),
+      extractedAt: new Date().toISOString(),
+    });
+
     const body = stripMarkdownFences(theme.content.trim());
     const snippet = body.slice(0, 300);
     let emb: number[] | undefined;
